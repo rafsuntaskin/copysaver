@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+._*
+
+# SwiftPM and local compiler caches; commit Package.resolved when introduced.
+.build/
+.swiftpm/
+.cache/
+.swift-module-cache/
+
+# Xcode user state and generated output
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.xcresult/
+*.xcarchive/
+
+# Local packaging output
+dist/
+*.dmg
+*.pkg
+
+# Secrets and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.key
+*.mobileprovision
+*.provisionprofile
+
+# Runtime vaults, databases, diagnostics, and local logs
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.keychain
+*.keychain-db
+*.log
+*.ips
+
+# Local editor files
+.idea/
+*.swp
+*.swo
+*~
