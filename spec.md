@@ -1,6 +1,6 @@
 # CopySaver: product and technical specification
 
-Status: approved product/architecture and selected UI baseline; implementation has not started. Track actual completion separately below.
+Status: independent core foundation implemented and tested; product/architecture and selected UI baseline approved. Native app/widget and signed platform checks remain pending. Track verified completion below.
 
 Created: October 26, 2026. Last updated: October 26, 2026.
 
@@ -22,7 +22,7 @@ This section is the working delivery plan. Sections 1–17 define the requiremen
 | Area | Status | Evidence / next action |
 | --- | --- | --- |
 | M0: repository and plan | Complete | Bootstrap commit `d8d1346`; planning documents and design references validated on `docs/project-foundation`. See M0-07 and the progress log. |
-| M1: independently testable core | Ready to start | Standalone Swift 6.3.3 compiled a temporary framework/crypto check; no app/package code exists yet. Start M1-01. |
+| M1: independently testable core | Complete | M1-01–M1-07 implemented; `make build && make test` passed from a clean tracked-source export with 31 tests. Next: M1-08 native app scaffold and M1-09 Keychain adapter. M1 as a whole remains incomplete. |
 | M1: signed platform integration | Blocked by local Xcode setup | Xcode 27.1 is selected, but SDK loading/Swift discovery fail with a CoreDevice library error. No repair is authorized. See [development setup](docs/development.md). |
 | M2: history and Focus mode | Not started | Depends on core storage, models, and session interfaces; signed platform verification remains a separate gate. |
 | M3: snippets and sensitive actions | Not started | Depends on persistence, session/authentication, and UI foundations. |
@@ -33,7 +33,7 @@ Core and policy implementation may proceed while signed integrations are blocked
 
 ### M0: repository and planning foundation
 
-- [x] **M0-01** Initialize `main` with a bootstrap commit and use a dedicated planning branch. Evidence: `d8d1346` (`chore(repo): initialize repository`); active work branch `docs/project-foundation`.
+- [x] **M0-01** Initialize `main` with a bootstrap commit and use a dedicated planning branch. Evidence: `d8d1346` (`chore(repo): initialize repository`); planning branch `docs/project-foundation` created and committed as `11caee9`.
 - [x] **M0-02** Add repository agent guidance and a documented branch/review/Conventional Commit workflow. Evidence: [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 - [x] **M0-03** Add an accurate README, MIT license, development guide, security reporting policy, PR template, ignore rules, and editor/attribute defaults. Evidence: root documents, `docs/development.md`, `.github/pull_request_template.md`, and repository configuration files.
 - [x] **M0-04** Consolidate scope, security requirements, stable delivery IDs, independent acceptance gates, and progress-update rules in this spec.
@@ -45,13 +45,13 @@ Core and policy implementation may proceed while signed integrations are blocked
 
 Independently testable core:
 
-- [ ] **M1-01** Add the Swift package/module scaffold and documented, reproducible core build/test entry points using the available toolchain.
-- [ ] **M1-02** Implement versioned history/snippet/settings models, UTC timestamps, and lossless text serialization with validation for stated limits.
-- [ ] **M1-03** Implement AES-256-GCM envelopes, fresh nonces, authenticated vault/record/version identity, and the vault verification record.
-- [ ] **M1-04** Add serialized SQLite persistence, parameterized SQL, durable transactions, bounded WAL handling, and the encrypted payload budget.
-- [ ] **M1-05** Add schema/envelope migration policy and fail-safe missing-key, corruption, unsupported-version, and write-failure behavior.
-- [ ] **M1-06** Test production CryptoKit round trips, tampering/row swaps, repeat-update nonces, synthetic plaintext-canary scans, and transaction recovery. Relate evidence to SEC-01–SEC-04.
-- [ ] **M1-07** Add testable session/capture-state interfaces and cancellation/generation handling; cover delayed reads, writes, and queries crossing lock.
+- [x] **M1-01** Add the Swift package/module scaffold and documented, reproducible core build/test entry points using the available toolchain. Evidence: [Package.swift](Package.swift), `make build` and `make test`; clean tracked-source export passed with Swift 6.3.3 and 31 tests.
+- [x] **M1-02** Implement versioned history/snippet/settings models, UTC timestamps, and lossless text serialization with validation for stated limits. Evidence: [domain models](Sources/CopySaverDomain/Records.swift); UTF-8/whitespace/date round trips, boundaries, defaults, and decode revalidation tested.
+- [x] **M1-03** Implement AES-256-GCM envelopes, fresh nonces, authenticated vault/record/version identity, and the vault verification record. Evidence: [record cipher](Sources/CopySaverVault/RecordCipher.swift), real CryptoKit tests, and independent OpenSSL envelope fixture.
+- [x] **M1-04** Add serialized SQLite persistence, parameterized SQL, durable transactions, bounded WAL handling, and the encrypted payload budget. Evidence: [SQLite store](Sources/CopySaverVault/SQLiteRecordStore.swift); persistence/reopen, checkpoints, per-record and aggregate budget rollback, and injected write failure tested.
+- [x] **M1-05** Add schema/envelope migration policy and fail-safe missing-key, corruption, unsupported-version, and write-failure behavior. Evidence: [format/policy](docs/vault-format.md); initial schema 1 has no legacy migration, unknown schemas are preserved/rejected, missing/wrong-key cases preserve data, and corrupt reads lock the session.
+- [x] **M1-06** Test production CryptoKit round trips, tampering/row swaps, repeat-update nonces, synthetic plaintext-canary scans, and transaction recovery. Evidence: `make test` passed 31 tests, including database/WAL/SHM scans and abandoned-transaction recovery. SEC-02/SEC-03 pass; SEC-01/SEC-04 retain app-level scenarios and remain unchecked. Forced process termination is not established by a connection-close recovery test.
+- [x] **M1-07** Add testable session/capture-state interfaces and cancellation/generation handling; cover delayed reads, writes, and queries crossing lock. Evidence: [vault session](Sources/CopySaverVault/VaultSession.swift) and [capture admission](Sources/CopySaverDomain/CaptureConditions.swift); stale read/write tokens, delayed/cancelled authentication, cancelled mutations, and all 48 capture-condition combinations tested. Native lifecycle/UI cancellation is still M1-11.
 
 Native/signed integration (must remain unchecked until validated):
 
@@ -108,6 +108,7 @@ Native/signed integration (must remain unchecked until validated):
 | --- | --- | --- | --- |
 | 2026-10-26 | Product/security baseline; concepts 1/2 selected; global Focus shortcut and sidebar widget added | Requirements in sections 1–17; selected static references in `designs/` | Product code and signed platform behavior are not implemented or verified. |
 | 2026-10-26 | M0-01–M0-07 repository/planning foundation complete; independent acceptance IDs established | Bootstrap commit `d8d1346`; agent/contribution/setup/security docs; documentation/link/checklist/PNG audit and artifact-ignore checks passed; staged whitespace review passed after removing one trailing blank line from the prompt archive | Next implementation task: M1-01. No app code or product tests exist yet. Full-Xcode integration remains blocked; no system repair authorized. |
+| 2026-10-26 | M1-01–M1-07 complete; SEC-02/SEC-03 passed on `feat/vault-foundation`, stacked on planning baseline `11caee9` | `make build && make test` passed from a clean tracked-source export: 31 tests; independent OpenSSL fixture, synthetic database/WAL scans, rollback/reopen, and stale/cancelled session checks. `package describe`, shell syntax, and documentation/whitespace checks passed | Next: M1-08 native app scaffold and M1-09 Keychain adapter. No runnable desktop app yet. Signed Keychain/lifecycle/widget/OS compatibility and release gates remain pending; no system repair performed. |
 
 ## 1. Product
 
@@ -479,8 +480,8 @@ These are measurement targets, not claims of completed validation. Record refere
 ### Security
 
 - [ ] **SEC-01** Seed unique canary bodies, titles, categories, source identifiers, and settings. After CRUD, retention, crash recovery, migration, and checkpointing, inspect database/WAL/SHM, preferences, temporary files, app logs, and app-generated diagnostic artifacts for plaintext canaries.
-- [ ] **SEC-02** Decryption fails with the wrong key and after changing ciphertext, nonce, tag, record ID, vault ID, or authenticated version. Swapping encrypted row envelopes fails.
-- [ ] **SEC-03** Repeated updates of the same record use different nonces and ciphertext; test the actual encryption path and verify round trips with independent format fixtures.
+- [x] **SEC-02** Decryption fails with the wrong key and after changing ciphertext, nonce, tag, record ID, vault ID, or authenticated version. Swapping encrypted row envelopes fails. Evidence: `RecordCipherTests` wrong-key/identity/tampering/version tests exercise production CryptoKit; persisted tampering also locks the session.
+- [x] **SEC-03** Repeated updates of the same record use different nonces and ciphertext; test the actual encryption path and verify round trips with independent format fixtures. Evidence: 50 repeated seals, persisted resealing tests, and the checked-in Node.js/OpenSSL AES-GCM fixture pass in the clean-source 31-test suite.
 - [ ] **SEC-04** A copied database cannot be opened by a fresh installation without its key. Missing-key handling preserves the original vault.
 - [ ] **SEC-05** Validate Keychain user-presence enforcement and app identity restrictions using signed builds, including a separately signed helper that must not retrieve the key. Debug-only tests are insufficient evidence.
 - [ ] **SEC-06** Verify lock, sleep, fast user switching, idle timeout, and termination paths. Race delayed reads, commits, and searches against lock; no stale content may reappear or commit after Locked is published.

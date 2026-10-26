@@ -2,7 +2,7 @@
 
 A macOS-first, open source clipboard history and named-snippet utility designed to keep stored content encrypted locally.
 
-**Status: planning and repository foundation. There is no runnable application or release download yet.** Implementation progress and verification gates live in [spec.md](spec.md#0-delivery-checklist-and-progress).
+**Status: core libraries implemented; native app and widget still in development. There is no runnable application or release download yet.** Implementation progress and verification gates live in [spec.md](spec.md#0-delivery-checklist-and-progress).
 
 ## Planned v0.1
 
@@ -27,9 +27,14 @@ The initial key is device-bound. Portable encrypted backup/recovery is not inclu
 
 ## Development
 
-Start with [development setup](docs/development.md), [contribution workflow](CONTRIBUTING.md), and [repository agent instructions](AGENTS.md). The standalone Swift toolchain has passed a temporary framework/crypto check; the full Xcode installation still has a developer-support loading issue. The development guide separates available checks from blocked integration tests.
+Start with [development setup](docs/development.md), [contribution workflow](CONTRIBUTING.md), and [repository agent instructions](AGENTS.md). The standalone Swift toolchain can build and test the core without modifying the system Xcode installation:
 
-There is no `Package.swift` or Xcode app target yet. Build/test commands for those targets will be documented and validated when the M1 scaffold is added.
+```sh
+make build
+make test
+```
+
+The dependency-free Swift package includes validated record models, AES-GCM encrypted SQLite persistence, and actor-isolated vault sessions. Its 31 Swift Testing tests use synthetic data and ephemeral keys. The [vault format](docs/vault-format.md) documents the encryption envelope, schema, and verification limits. A native authenticated Keychain provider, app target, widget, and signed platform validation are not implemented yet.
 
 ## Contributing and security
 
