@@ -4,7 +4,7 @@
 
 Read [spec.md](spec.md), [AGENTS.md](AGENTS.md), and [development setup](docs/development.md). The spec defines v0.1 scope, security requirements, and stable delivery checklist IDs. Update it alongside implementation rather than maintaining a competing task list.
 
-The repository contains core Swift libraries/tests, planning documents, and design references. Native app and widget targets are pending. Do not describe planned commands, app downloads, signed validation, or release artifacts as available until they exist and have been verified.
+The repository contains core/platform/desktop Swift libraries and tests, a runnable sample-data development app, an Xcode app project, planning documents, and design references. Clipboard capture, the widget target, and signed native validation are pending. Do not describe planned commands, app downloads, signed validation, or release artifacts as available until they exist and have been verified.
 
 ## Branches
 
@@ -18,7 +18,7 @@ Use a lightweight branch-and-review workflow:
 6. Integrate after review and passing applicable checks. Prefer squash merge for a multi-commit feature; a reviewed single-commit branch may be fast-forwarded. Do not create merge commits just to keep a branch current. Never rewrite a shared branch or force-push without explicit agreement.
 7. Delete a feature branch only after its work is integrated and the branch is no longer needed.
 
-If required foundation work is not yet integrated, use an explicitly documented stacked branch from that dependency instead of silently merging it into `main` or dropping its files. The initial `feat/vault-foundation` branch is based on `docs/project-foundation` at `11caee9`; review/integrate the planning baseline before its dependent feature work.
+If required foundation work is not yet integrated, use an explicitly documented stacked branch from that dependency instead of silently merging it into `main` or dropping its files. The initial `feat/vault-foundation` branch is based on `docs/project-foundation` at `11caee9`; review/integrate the planning baseline before its dependent feature work. `feat/native-app` is stacked on `feat/vault-foundation` at `06359fe`. Review/integrate planning, vault, then native app, without silently merging into `main`.
 
 Examples of branch names:
 

@@ -1,6 +1,6 @@
 # CopySaver: product and technical specification
 
-Status: independent core foundation implemented and tested; product/architecture and selected UI baseline approved. Native app/widget and signed platform checks remain pending. Track verified completion below.
+Status: tested encrypted core and runnable native development scaffold; product/architecture and selected UI baseline approved. Clipboard capture, widgets, and signed platform checks remain pending. Track verified completion below.
 
 Created: October 26, 2026. Last updated: October 26, 2026.
 
@@ -22,11 +22,12 @@ This section is the working delivery plan. Sections 1–17 define the requiremen
 | Area | Status | Evidence / next action |
 | --- | --- | --- |
 | M0: repository and plan | Complete | Bootstrap commit `d8d1346`; planning documents and design references validated on `docs/project-foundation`. See M0-07 and the progress log. |
-| M1: independently testable core | Complete | M1-01–M1-07 implemented; `make build && make test` passed from a clean tracked-source export with 31 tests. Next: M1-08 native app scaffold and M1-09 Keychain adapter. M1 as a whole remains incomplete. |
+| M1: independently testable core | Complete | M1-01–M1-07 implemented; `make build && make test` passed from a clean tracked-source export with 31 tests. Native scaffold and Keychain adapter source now exist; 55 core/platform/desktop tests pass. M1 as a whole remains incomplete. |
+| M1: native development preview | Available | `make preview` launches a sample-only SwiftUI/AppKit app built through Command Line Tools. No capture, real Keychain, or clipboard access in preview. See [native evidence](docs/native-integration.md). |
 | M1: signed platform integration | Blocked by local Xcode setup | Xcode 27.1 is selected, but SDK loading/Swift discovery fail with a CoreDevice library error. No repair is authorized. See [development setup](docs/development.md). |
-| M2: history and Focus mode | Not started | Depends on core storage, models, and session interfaces; signed platform verification remains a separate gate. |
-| M3: snippets and sensitive actions | Not started | Depends on persistence, session/authentication, and UI foundations. |
-| M4: widgets and release hardening | Not started | Depends on implemented flows, working Xcode/signing, and release inputs. |
+| M2: history and Focus mode | In progress | Native library/Focus scaffold, in-memory search, shortcut adapter, and clipboard output exist; capture/retention and native behavior verification remain pending. |
+| M3: snippets and sensitive actions | In progress | Basic creation/deletion, masked details, fresh-auth reveal/copy, and owned-copy expiry source/tests exist; editing/templates/promotion and signed auth remain pending. |
+| M4: widgets and release hardening | Early UI work only | Initial native states/appearance exist; widgets, full accessibility/performance checks, CI, and signed release validation remain pending. |
 | Portable backup / Windows | Deferred | Outside v0.1; not included in current completion totals. |
 
 Core and policy implementation may proceed while signed integrations are blocked, as authorized by the user. UI scaffolding can follow the approved direction. Do not treat provisional platform adapters, unsigned previews, or a compiler check as a completed M1 exit gate or a validated release.
@@ -55,12 +56,12 @@ Independently testable core:
 
 Native/signed integration (must remain unchecked until validated):
 
-- [ ] **M1-08** Add the committed Xcode app project, shared schemes, development/production identity separation, sandbox, and hardened-runtime configuration.
-- [ ] **M1-09** Implement device-only, app-scoped Keychain key storage with user-presence authentication, password fallback, and no plaintext fallback.
+- [ ] **M1-08** Add the committed Xcode app project, shared schemes, development/production identity separation, sandbox, and hardened-runtime configuration. **In progress:** Source/project present; `make app` passes with ad-hoc signing, project/plist/reference checks pass. Full Xcode build and signed identity validation remain pending.
+- [ ] **M1-09** Implement device-only, app-scoped Keychain key storage with user-presence authentication, password fallback, and no plaintext fallback. **In progress:** Adapter and query-policy tests present; real Keychain authentication/access enforcement remains pending.
 - [ ] **M1-10** Validate authenticated Keychain access with a signed app and denial from a separately signed helper; preserve existing vaults when the key is missing.
-- [ ] **M1-11** Integrate public system/session/sleep/idle events and prove capture stops and decrypted state is concealed on all lock paths.
-- [ ] **M1-12** Prove sandboxed pasteboard access/permission behavior and a global shortcut without Accessibility or Input Monitoring permission.
-- [ ] **M1-13** Prove minimal WidgetKit-to-app navigation without sharing vault data or Keychain access; validate strict URL routing.
+- [ ] **M1-11** Integrate public system/session/sleep/idle events and prove capture stops and decrypted state is concealed on all lock paths. **In progress:** Public lifecycle observers, presentation purge/generation tests, and provisional idle handling exist. Actual OS lock coverage and supported replacement for the supplemental undocumented screen-lock signal remain pending.
+- [ ] **M1-12** Prove sandboxed pasteboard access/permission behavior and a global shortcut without Accessibility or Input Monitoring permission. **In progress:** Clipboard/hotkey adapters compile; in-memory ownership/expiry/failure tests pass. Real sandbox/permission/global-shortcut scenarios remain pending.
+- [ ] **M1-13** Prove minimal WidgetKit-to-app navigation without sharing vault data or Keychain access; validate strict URL routing. **In progress:** Exact URL parser and malformed-route tests exist; widget extension and navigation integration remain pending.
 - [ ] **M1-14** Pass the M1 exit scenario: signed create → unlock → encrypted save → relaunch → authenticated load, unauthorized-helper denial, and safe denied-permission/missing-key handling. Record supported OS/toolchain evidence.
 
 ### M2: clipboard history and Focus mode
@@ -69,31 +70,31 @@ Native/signed integration (must remain unchecked until validated):
 - [ ] **M2-02** Implement confidential/transient/generated marker exclusions, conservative secret filtering, application exclusions, and source/activation race handling.
 - [ ] **M2-03** Implement exact-byte duplicate refresh, encrypted metadata, in-memory lookup, and self-copy suppression.
 - [ ] **M2-04** Implement pinning, count/age retention, payload-budget eviction, lower-limit confirmation, and explicit capacity errors.
-- [ ] **M2-05** Implement Unicode-aware in-memory search and sorting without persisted queries or plaintext indexes.
-- [ ] **M2-06** Build concept 1's shared library shell, history list/details, copy/save-as-snippet actions, and readable compact-window navigation.
-- [ ] **M2-07** Build concept 2's Focus panel, immediate search focus, keyboard selection/copy/dismissal, and Open Library selection handoff.
-- [ ] **M2-08** Implement global shortcut recording, persistence, validation/conflict handling, atomic replacement, and current-display/Space behavior.
-- [ ] **M2-09** Implement menu bar status, capture enable/pause/resume, optional login launch, locked states, and accurate first-run permission guidance.
-- [ ] **M2-10** Implement clipboard output markers/current-host-only writes, ownership tracking, accurate copy failure reporting, and destination focus restoration.
+- [ ] **M2-05** Implement Unicode-aware in-memory search and sorting without persisted queries or plaintext indexes. **In progress:** In-memory UI search exists and sensitive body exclusion is tested; complete Unicode/scale validation remains pending.
+- [ ] **M2-06** Build concept 1's shared library shell, history list/details, copy/save-as-snippet actions, and readable compact-window navigation. **In progress:** Three-column library scaffold is runnable with sample data; promotion and compact navigation remain pending.
+- [ ] **M2-07** Build concept 2's Focus panel, immediate search focus, keyboard selection/copy/dismissal, and Open Library selection handoff. **In progress:** Compact panel renders with initial search focus; keyboard/dismissal/handoff scenarios need full native validation.
+- [ ] **M2-08** Implement global shortcut recording, persistence, validation/conflict handling, atomic replacement, and current-display/Space behavior. **In progress:** Carbon registration, local recording, nonsecret persistence, validation, and atomic replacement source exist; native conflict/Space tests remain pending.
+- [ ] **M2-09** Implement menu bar status, capture enable/pause/resume, optional login launch, locked states, and accurate first-run permission guidance. **In progress:** Menu bar, setup/locked/error presentation source exists; capture/login-launch/permission flows remain pending.
+- [ ] **M2-10** Implement clipboard output markers/current-host-only writes, ownership tracking, accurate copy failure reporting, and destination focus restoration. **In progress:** Output implementation and injected-pasteboard tests pass; real pasteboard/focus restoration remains pending.
 - [ ] **M2-11** Cover history, policy, permissions, self-capture, capacity, and lock races with meaningful tests; run the copy → encrypted save → search → copy-back scenario. Pass related FUNC/SEC checks in section 12.
 
 ### M3: snippets and sensitive operations
 
-- [ ] **M3-01** Implement snippet CRUD, validation, category labels, text preservation, duplicate-name handling, and independent history promotion.
+- [ ] **M3-01** Implement snippet CRUD, validation, category labels, text preservation, duplicate-name handling, and independent history promotion. **In progress:** Basic creation/deletion and text preservation are implemented; editing/category UI/history promotion remain pending.
 - [ ] **M3-02** Implement General/Address/Card templates, sensitive-by-default card templates, and explicit create/edit/unsaved-draft states.
-- [ ] **M3-03** Add snippet list/details/editor within concept 1's shell, plus Focus panel snippet search/copy.
-- [ ] **M3-04** Enforce fresh authentication for sensitive reveal/copy/edit and sensitivity changes; test cancellation, failure, and lockout.
-- [ ] **M3-05** Mask sensitive bodies across previews, search, VoiceOver, tooltips, and feedback; implement reveal expiry/deactivation/lock behavior.
-- [ ] **M3-06** Implement sensitive clipboard marking and owned-copy expiry/lock clearing without erasing newer external copies or restoring old content.
-- [ ] **M3-07** Implement item deletion, confirmed clear-history behavior, and explicit destructive vault reset, including missing-key recovery handling.
+- [ ] **M3-03** Add snippet list/details/editor within concept 1's shell, plus Focus panel snippet search/copy. **In progress:** List, masked details, creation editor, and Focus snippet filter exist; full editing and native workflow tests remain pending.
+- [ ] **M3-04** Enforce fresh authentication for sensitive reveal/copy/edit and sensitivity changes; test cancellation, failure, and lockout. **In progress:** Reveal/copy require fresh injected authentication and reject late results; signed auth, edit/sensitivity-change flows, and lockout remain pending.
+- [ ] **M3-05** Mask sensitive bodies across previews, search, VoiceOver, tooltips, and feedback; implement reveal expiry/deactivation/lock behavior. **In progress:** Masked body/search policy and reveal deactivation/expiry source exist; complete VoiceOver/timing/native validation remains pending.
+- [ ] **M3-06** Implement sensitive clipboard marking and owned-copy expiry/lock clearing without erasing newer external copies or restoring old content. **In progress:** Marking/ownership/expiry implementation has deterministic tests; real clipboard and sleep/wake behavior remain pending.
+- [ ] **M3-07** Implement item deletion, confirmed clear-history behavior, and explicit destructive vault reset, including missing-key recovery handling. **In progress:** Selected-item deletion exists; confirmed history clearing and destructive reset remain pending.
 - [ ] **M3-08** Validate snippet persistence/promotion/retention independence, sensitive action flows, timer/ownership races, and draft disposal on lock. Pass related FUNC/SEC checks.
 
 ### M4: widgets, accessibility, and release hardening
 
 - [ ] **M4-01** Implement small/medium static launcher widgets, strict navigation links, cold-launch/locked routing, and add-widget instructions.
 - [ ] **M4-02** Validate widget discovery/placement in Notification Center and on the desktop; inspect snapshots/timelines/extension storage/entitlements for data leaks.
-- [ ] **M4-03** Complete onboarding, settings, locked/loading/empty/search-empty, permission/error, and shortcut-recording states within approved concepts 1/2.
-- [ ] **M4-04** Verify light/dark/increased-contrast/reduced-motion behavior and keyboard/VoiceOver completion of all main workflows.
+- [ ] **M4-03** Complete onboarding, settings, locked/loading/empty/search-empty, permission/error, and shortcut-recording states within approved concepts 1/2. **In progress:** Initial native setup/settings/locked/loading/empty/error/shortcut states exist; onboarding and permission flows remain incomplete.
+- [ ] **M4-04** Verify light/dark/increased-contrast/reduced-motion behavior and keyboard/VoiceOver completion of all main workflows. **In progress:** Library light/dark and Focus rendering inspected; complete accessibility/keyboard validation remains pending.
 - [ ] **M4-05** Measure panel latency, search, capture delay, idle CPU, and near-limit memory against section 11; record hardware/OS, dataset, and results.
 - [ ] **M4-06** Run signed lifecycle/security/permission tests and audit entitlements, runtime networking, diagnostics, migrations, and crash recovery.
 - [ ] **M4-07** Add CI for available core tests and the real app build; document and verify source build/test commands from a clean checkout.
@@ -109,6 +110,7 @@ Native/signed integration (must remain unchecked until validated):
 | 2026-10-26 | Product/security baseline; concepts 1/2 selected; global Focus shortcut and sidebar widget added | Requirements in sections 1–17; selected static references in `designs/` | Product code and signed platform behavior are not implemented or verified. |
 | 2026-10-26 | M0-01–M0-07 repository/planning foundation complete; independent acceptance IDs established | Bootstrap commit `d8d1346`; agent/contribution/setup/security docs; documentation/link/checklist/PNG audit and artifact-ignore checks passed; staged whitespace review passed after removing one trailing blank line from the prompt archive | Next implementation task: M1-01. No app code or product tests exist yet. Full-Xcode integration remains blocked; no system repair authorized. |
 | 2026-10-26 | M1-01–M1-07 complete; SEC-02/SEC-03 passed on `feat/vault-foundation`, stacked on planning baseline `11caee9` | `make build && make test` passed from a clean tracked-source export: 31 tests; independent OpenSSL fixture, synthetic database/WAL scans, rollback/reopen, and stale/cancelled session checks. `package describe`, shell syntax, and documentation/whitespace checks passed | Next: M1-08 native app scaffold and M1-09 Keychain adapter. No runnable desktop app yet. Signed Keychain/lifecycle/widget/OS compatibility and release gates remain pending; no system repair performed. |
+| 2026-10-26 | Native scaffold on `feat/native-app`, stacked on vault foundation `06359fe`; partial M1-08/M1-09/M1-11–M1-13, M2-05–M2-10, M3-01/M3-03–M3-07, M4-03/M4-04. No additional full acceptance gates checked | Clean staged-source `make build` and `make test`: 55 tests pass; `make app`: sandbox/hardened ad-hoc bundle verified; optimized executable builds; project/plist/reference checks pass. Native sample library inspected in light/dark; Focus opens with search focused. See [native evidence](docs/native-integration.md) | Next: M2-01 capture policy/monitor work through injected interfaces, plus signed M1 validation once Xcode works. Final visual repeat paused because the Mac is locked. Capture/widgets/editing/templates and native security gates remain pending; no system repair performed. |
 
 ## 1. Product
 

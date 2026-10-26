@@ -1,6 +1,6 @@
 # CopySaver UI explorations
 
-Three static concepts generated on October 26, 2026 using built-in image generation, based on `../spec.md`. The user selected concepts 1 and 2 as the implementation direction: Native library for the full window and Focus panel for global quick access. Application code has not been implemented. All sample content is fictional.
+Three static concepts generated on October 26, 2026 using built-in image generation, based on `../spec.md`. The user selected concepts 1 and 2 as the implementation direction: Native library for the full window and Focus panel for global quick access. A SwiftUI/AppKit development scaffold now implements the selected structures; full interaction, accessibility, and security acceptance remain pending. All sample content is fictional.
 
 ## 1. Native library
 
@@ -43,6 +43,6 @@ Add a native macOS Notification Center widget, also usable on the desktop. The s
 
 Refine the remaining states within this direction: snippet editing, masked sensitive snippet, locked vault, first run, permission denied, shortcut recording/conflicts, and empty/search-empty states. Sensitive content must require authentication before reveal, editing, copying, or changing sensitivity.
 
-Implementation still needs contrast, target size, keyboard, VoiceOver, reduced-motion, real native-control validation, and global shortcut/Spaces tests. Generated screenshots do not establish accessibility compliance or working security behavior. Behavioral details and acceptance criteria are recorded in [spec.md](../spec.md).
+The native sample preview has been inspected in light and dark appearances, including library rows/details and the Focus panel. Implementation still needs full contrast, target size, keyboard, VoiceOver, reduced-motion, and global shortcut/Spaces tests. See [native integration evidence](../docs/native-integration.md). Generated screenshots do not establish accessibility compliance or working security behavior. Behavioral details and acceptance criteria are recorded in [spec.md](../spec.md).
 
 Full generation prompts and the native-library refinement are preserved in [prompts.md](prompts.md).

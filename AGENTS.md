@@ -2,9 +2,9 @@
 
 ## Start here
 
-Read [spec.md](spec.md), its delivery checklist and progress log, [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/development.md](docs/development.md) before changing code. For UI work, also read [designs/README.md](designs/README.md) and inspect the selected mockups.
+Read [spec.md](spec.md), its delivery checklist and progress log, [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/development.md](docs/development.md) before changing code. For UI work, also read [PRODUCT.md](PRODUCT.md), [DESIGN.md](DESIGN.md), and [designs/README.md](designs/README.md), and inspect the selected mockups.
 
-`spec.md` is the source of truth for requirements, scope, defaults, and delivery status. The repository is initially a planning baseline, not a working application. Do not invent build targets, commands, passing tests, or implemented features.
+`spec.md` is the source of truth for requirements, scope, defaults, and delivery status. The repository contains tested core libraries and a native development scaffold. Clipboard capture, widgets, and signed security/release checks remain unfinished. Do not invent build targets, commands, passing tests, or implemented features.
 
 ## Product and architecture
 
@@ -34,7 +34,7 @@ Read [spec.md](spec.md), its delivery checklist and progress log, [CONTRIBUTING.
 - `main` is the integration baseline. The one-time bootstrap commit is already on `main`; normal work belongs on a focused branch created from the current integration baseline.
 - Branch names: `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `test/<topic>`, `refactor/<topic>`, or `chore/<topic>`. Use short lowercase hyphenated topics.
 - Reuse an existing branch only when continuing the same task. Start a separate branch for an unrelated task. Check the user's current branch and uncommitted changes first.
-- If prerequisite work is not integrated, an explicitly documented stacked branch may start from that dependency. Record its base and integration order; do not merge into `main` silently. The initial vault feature depends on the planning baseline at `11caee9`.
+- If prerequisite work is not integrated, an explicitly documented stacked branch may start from that dependency. Record its base and integration order; do not merge into `main` silently. The initial vault feature depends on the planning baseline at `11caee9`; `feat/native-app` is stacked on `feat/vault-foundation` at `06359fe`. Integrate planning, vault, then native app after review.
 - Make small, coherent commits using Conventional Commit subjects: `type(scope): imperative summary`. Include the implementation, relevant tests, and matching spec progress update together. A commit must not contain unrelated cleanup.
 - Before each commit, inspect staged paths and the staged diff, run `git diff --cached --check`, and run relevant available validation. Stage explicit paths rather than blindly staging the entire workspace.
 - Record unavailable validation as pending/blocked with its reason. Never mark a gate passed just to produce a clean commit or finish a milestone.

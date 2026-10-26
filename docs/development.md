@@ -2,7 +2,7 @@
 
 ## Current repository state
 
-The repository contains a Swift 6 package with `CopySaverDomain` and `CopySaverVault` libraries, 31 Swift Testing tests, and no external package dependencies. Native app/widget targets, CI, and release binaries are pending. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
+The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 55 Swift Testing tests, a native development executable, and no external package dependencies. An Xcode app project is committed but has not been built through Xcode. Clipboard capture, the widget target, CI, and release binaries are pending. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
 
 ## Available standalone tools
 
@@ -13,9 +13,10 @@ From the repository root:
 ```sh
 make build
 make test
+make preview
 ```
 
-`make test` runs Swift Testing without XCTest. The 31 tests cover record validation/serialization, capture admission, production CryptoKit encryption/tampering, an independent OpenSSL envelope fixture, encrypted SQLite CRUD/rollback/reopen, and session locking/cancellation. Every vault and key used by tests is synthetic and temporary; no user clipboard, Keychain, or production vault is read.
+`make test` runs Swift Testing without XCTest. The 55 tests cover record validation/serialization, capture admission, CryptoKit encryption/tampering, an independent OpenSSL fixture, SQLite CRUD/rollback/reopen, session cancellation, Keychain query policy, strict navigation routes, UI lock/authentication races, and sensitive-copy ownership/expiry. Storage is synthetic and temporary. Platform tests use an in-memory Keychain transport and an in-memory pasteboard bridge; they never call real `SecItem` storage or the system clipboard. The access-control constructor and pasteboard-item representation use OS frameworks without authenticating or touching user data.
 
 Targeted commands use the same wrapper:
 
@@ -56,7 +57,24 @@ env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -showsdk
 env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift --version
 ```
 
-The signed app build, native Keychain provider/access controls, widget packaging/discovery, Xcode UI testing, and release validation stay unchecked until their own tests run. Specify project/scheme/test commands here once those targets exist and have been verified. The current provider protocol deliberately has no production fallback: core tests inject ephemeral keys; an app must obtain its real key through the future authenticated Keychain adapter.
+The signed app build, actual Keychain enforcement, widget packaging/discovery, Xcode UI testing, and release validation stay unchecked until their own tests run. The native Keychain adapter exists and has no plaintext fallback; its query policy is unit-tested, while OS-enforced identity and authentication remain separate gates. See [native integration evidence](native-integration.md).
+
+## Native development app
+
+```sh
+make app
+make preview
+```
+
+`make app` builds the Debug executable through SwiftPM, packages `.build/CopySaverDev.app`, and verifies its local ad-hoc signature with sandbox and hardened runtime. `make preview` opens that bundle with `--ui-preview`. The DEBUG-only preview contains fictional records, no vault/authentication services, and no clipboard output. Sample reveal/copy/edit actions are disabled. Lock clears the samples; Reset sample preview restores them. The optimized Release executable excludes the sample records and refuses the preview flag.
+
+Normal launch starts locked (or offers setup for a new vault). It attempts real data-protection Keychain access and may report a missing-entitlement error with ad-hoc signing. Do not weaken entitlements or authentication to bypass this. Use synthetic data only until signed integration passes. Clipboard capture is deliberately still off.
+
+`CopySaver.xcodeproj` and its shared `CopySaver` scheme reference the local Swift package. Once Xcode works, open the project, select your own development team, build the Debug scheme, and run the M1-08–M1-14 scenarios. This project configuration is structurally checked, not yet verified by `xcodebuild`; no passing Xcode command is claimed. Do not invent a team ID or add shared Keychain groups.
+
+Debug uses provisional bundle ID `org.copysaver.CopySaver.dev` and scheme `copysaver-dev`; Release uses `org.copysaver.CopySaver` and `copysaver`. Vault paths and Keychain service names derive from the active bundle identity. These identifiers require ownership confirmation before distribution. The provisional app has no network entitlement, widget extension, or shared container.
+
+Native visual inspection and remaining platform gates are recorded in [native-integration.md](native-integration.md). The selected design context is in [PRODUCT.md](../PRODUCT.md) and [DESIGN.md](../DESIGN.md).
 
 ## Permissions and safe development
 
