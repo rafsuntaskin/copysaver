@@ -43,7 +43,7 @@ struct LibraryView: View {
             }
             Spacer()
             Divider().padding(.bottom, 10)
-            Label(model.isPreview ? "Sample data" : model.phase == .unlocked ? "History off" : "Locked", systemImage: model.isPreview ? "eye" : "lock.shield")
+            Label(model.captureStatus, systemImage: model.isPreview ? "eye" : "lock.shield")
                 .font(.system(size: 12)).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.bottom, 8)
             Button { model.onOpenFocus?() } label: {
                 Label("Focus mode", systemImage: "rectangle.center.inset.filled").frame(maxWidth: .infinity, alignment: .leading)
@@ -140,7 +140,7 @@ struct LibraryView: View {
                 Image(systemName: model.section == .snippets ? "doc.text" : "clipboard").font(.system(size: 30)).foregroundStyle(.secondary)
                 Text(model.libraryQuery.isEmpty ? (model.section == .snippets ? "Save something you use often" : "Your clipboard history starts here") : "No matches")
                     .font(.system(size: 19, weight: .semibold))
-                Text(model.libraryQuery.isEmpty ? (model.section == .snippets ? "Give reusable text a name so it’s easy to find." : "History is off. Your named snippets are available in the sidebar.") : "Try a different word or clear your search.")
+                Text(model.libraryQuery.isEmpty ? (model.section == .snippets ? "Give reusable text a name so it’s easy to find." : "Enable clipboard history in Settings to keep future copies, or create a named snippet.") : "Try a different word or clear your search.")
                     .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
                 if !model.isPreview {
                     Button("New snippet") { model.beginSnippet() }.buttonStyle(.borderedProminent).disabled(model.isBusy)

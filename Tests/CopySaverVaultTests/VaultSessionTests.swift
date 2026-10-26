@@ -307,3 +307,18 @@ func unsupportedDatabaseVersionsArePreserved(version: Int) throws {
     }
     #expect(try await vault.records(access: access) == [original])
 }
+
+@Test func transactionalEditPreservesCanonicallyEquivalentButDistinctUTF8() async throws {
+    let fixture = try VaultFixture()
+    let key = SymmetricKey(size: .bits256)
+    let vault = try VaultSession.create(at: fixture.url, key: key)
+    let access = try await vault.unlock(using: EphemeralKeyProvider(key: key))
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let original = try Snippet(name: "Synthetic Unicode", body: "é", createdAt: date, updatedAt: date)
+    try await vault.apply(saving: [VaultRecord(.snippet(original))], access: access)
+    let replacement = try Snippet(id: original.id, name: original.name, body: "e\u{301}", createdAt: date, updatedAt: date)
+    _ = try await vault.update(access: access) { _, _ in [try VaultRecord(.snippet(replacement))] }
+    guard case .snippet(let stored) = try await vault.record(id: original.id, access: access)?.payload else { Issue.record("Missing snippet"); return }
+    #expect(Array(stored.body.utf8) == Array(replacement.body.utf8))
+    #expect(Array(stored.body.utf8) != Array(original.body.utf8))
+}

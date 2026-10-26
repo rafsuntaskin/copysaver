@@ -49,8 +49,10 @@ func invalidKeychainNamespacesAreRejected(value: String) {
     await #expect(throws: VaultError.locked) {
         try await service.save(VaultRecord(.settings(VaultSettings())))
     }
-    #expect(try await service.unlock().isEmpty)
-    let record = try VaultRecord(.settings(VaultSettings()))
+    let initial = try await service.unlock()
+    #expect(initial.count == 1)
+    guard case .settings(let settings) = initial[0].payload else { Issue.record("Missing settings"); return }
+    let record = try VaultRecord(.settings(settings))
     #expect(try await service.save(record) == [record])
     await service.lock()
     await #expect(throws: VaultError.locked) { try await service.delete(record.id) }
@@ -129,4 +131,39 @@ func exactNavigationRoutesAreAccepted(value: String) throws {
 ])
 func malformedOrForeignNavigationHasNoAction(value: String) throws {
     #expect(AppDestination(url: try #require(URL(string: value)), scheme: "copysaver") == nil)
+}
+
+@Test func capturedHistoryDeduplicatesAtomicallyAndPauseSurvivesRelaunch() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("copysaver-history-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("vault.sqlite")
+    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.dev", transport: MemoryKeychain())
+    let service = DesktopVaultService(url: url, keys: provider)
+    try await service.create()
+    var records = try await service.unlock()
+    let settings = try HistoryPolicy.settings(in: records).updating(captureEnabled: true)
+    records = try await service.updateSettings(settings, confirmed: false)
+    try await withThrowingTaskGroup(of: Void.self) { group in
+        for _ in 0..<12 {
+            group.addTask { _ = try await service.capture(ClipboardSample(text: "Synthetic exact text\n  ", date: Date())) }
+        }
+        try await group.waitForAll()
+    }
+    records = try await service.cleanup(now: Date())
+    let history = records.compactMap { if case .history(let value) = $0.payload { return value }; return nil }
+    #expect(history.count == 1 && history.first?.repeatCount == 12)
+    let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
+    let snippet = try VaultRecord(.snippet(Snippet(name: "Synthetic", body: "Independent", createdAt: timestamp, updatedAt: timestamp)))
+    _ = try await service.save(snippet)
+    let paused = try settings.updating(manuallyPaused: true)
+    _ = try await service.updateSettings(paused, confirmed: false)
+    await service.lock()
+    let reopened = DesktopVaultService(url: url, keys: provider)
+    #expect(try await reopened.prepare())
+    records = try await reopened.unlock()
+    #expect(try HistoryPolicy.settings(in: records).manuallyPaused)
+    await #expect(throws: VaultError.staleSession) { try await reopened.capture(ClipboardSample(text: "Skipped", date: Date())) }
+    records = try await reopened.clearHistory()
+    #expect(records.contains(snippet))
+    #expect(!records.contains { if case .history = $0.payload { return true }; return false })
 }

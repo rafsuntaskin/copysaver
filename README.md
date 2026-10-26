@@ -2,7 +2,7 @@
 
 A macOS-first, open source clipboard history and named-snippet utility designed to keep stored content encrypted locally.
 
-**Status: runnable native development preview, with tested encrypted core storage. Clipboard capture, widgets, and signed security/release validation are unfinished. There is no release download yet.** Implementation progress and verification gates live in [spec.md](spec.md#0-delivery-checklist-and-progress).
+**Status: runnable native development preview, with tested encrypted core storage. Clipboard capture and retention are implemented; widgets and signed security/release validation are unfinished. There is no release download yet.** Implementation progress and verification gates live in [spec.md](spec.md#0-delivery-checklist-and-progress).
 
 ## Planned v0.1
 
@@ -37,7 +37,7 @@ make preview
 
 The preview opens the approved three-column library with synthetic samples. Use the sidebar’s Focus mode action to inspect the compact panel. Preview mode never creates a vault, accesses Keychain, or copies to the system clipboard.
 
-The dependency-free Swift package includes record models, AES-GCM encrypted SQLite storage, a native Keychain adapter, and SwiftUI/AppKit views. Its 55 Swift Testing tests use synthetic data and temporary storage; authentication and clipboard behavior use test doubles. `make app` builds an ad-hoc signed development bundle at `.build/CopySaverDev.app`; it does not establish protected Keychain access or release readiness. Use synthetic data until native security gates pass. See [native integration evidence](docs/native-integration.md) and the [vault format](docs/vault-format.md).
+The dependency-free Swift package includes record models, AES-GCM encrypted SQLite storage, a native Keychain adapter, and SwiftUI/AppKit views. Its 68 Swift Testing tests use synthetic data and temporary storage; authentication and clipboard behavior use test doubles. `make app` builds an ad-hoc signed development bundle at `.build/CopySaverDev.app`; it does not establish protected Keychain access or release readiness. Use synthetic data until native security gates pass. See [native integration evidence](docs/native-integration.md) and the [vault format](docs/vault-format.md).
 
 ## Contributing and security
 

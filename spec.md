@@ -1,6 +1,6 @@
 # CopySaver: product and technical specification
 
-Status: tested encrypted core and runnable native development scaffold; product/architecture and selected UI baseline approved. Clipboard capture, widgets, and signed platform checks remain pending. Track verified completion below.
+Status: tested encrypted core and runnable native development scaffold; product/architecture and selected UI baseline approved. Clipboard capture/retention are implemented through testable adapters; widgets and signed platform checks remain pending. Track verified completion below.
 
 Created: October 26, 2026. Last updated: October 26, 2026.
 
@@ -25,7 +25,7 @@ This section is the working delivery plan. Sections 1–17 define the requiremen
 | M1: independently testable core | Complete | M1-01–M1-07 implemented; `make build && make test` passed from a clean tracked-source export with 31 tests. Native scaffold and Keychain adapter source now exist; 55 core/platform/desktop tests pass. M1 as a whole remains incomplete. |
 | M1: native development preview | Available | `make preview` launches a sample-only SwiftUI/AppKit app built through Command Line Tools. No capture, real Keychain, or clipboard access in preview. See [native evidence](docs/native-integration.md). |
 | M1: signed platform integration | Blocked by local Xcode setup | Xcode 27.1 is selected, but SDK loading/Swift discovery fail with a CoreDevice library error. No repair is authorized. See [development setup](docs/development.md). |
-| M2: history and Focus mode | In progress | Native library/Focus scaffold, in-memory search, shortcut adapter, and clipboard output exist; capture/retention and native behavior verification remain pending. |
+| M2: history and Focus mode | In progress | Capture, privacy admission, exact-byte deduplication, transactional retention, encrypted preferences, and pause/resume are implemented. Pinning UI and native end-to-end verification remain pending. |
 | M3: snippets and sensitive actions | In progress | Basic creation/deletion, masked details, fresh-auth reveal/copy, and owned-copy expiry source/tests exist; editing/templates/promotion and signed auth remain pending. |
 | M4: widgets and release hardening | Early UI work only | Initial native states/appearance exist; widgets, full accessibility/performance checks, CI, and signed release validation remain pending. |
 | Portable backup / Windows | Deferred | Outside v0.1; not included in current completion totals. |
@@ -66,9 +66,9 @@ Native/signed integration (must remain unchecked until validated):
 
 ### M2: clipboard history and Focus mode
 
-- [ ] **M2-01** Implement change-count polling, permission-aware admission, startup/resume baselines, size/type checks, and mid-read change rejection.
+- [x] **M2-01** Implement change-count polling, permission-aware admission, startup/resume baselines, size/type checks, and mid-read change rejection. Evidence: `ClipboardMonitorTests` cover no-read baselines, pause/permission restoration, wraparound, markers, and mid-read races; native permissions remain M1-12.
 - [ ] **M2-02** Implement confidential/transient/generated marker exclusions, conservative secret filtering, application exclusions, and source/activation race handling.
-- [ ] **M2-03** Implement exact-byte duplicate refresh, encrypted metadata, in-memory lookup, and self-copy suppression.
+- [x] **M2-03** Implement exact-byte duplicate refresh, encrypted metadata, in-memory lookup, and self-copy suppression. Evidence: exact UTF-8 policy and marker tests; concurrent real encrypted SQLite captures preserve a single record and repeat count.
 - [ ] **M2-04** Implement pinning, count/age retention, payload-budget eviction, lower-limit confirmation, and explicit capacity errors.
 - [ ] **M2-05** Implement Unicode-aware in-memory search and sorting without persisted queries or plaintext indexes. **In progress:** In-memory UI search exists and sensitive body exclusion is tested; complete Unicode/scale validation remains pending.
 - [ ] **M2-06** Build concept 1's shared library shell, history list/details, copy/save-as-snippet actions, and readable compact-window navigation. **In progress:** Three-column library scaffold is runnable with sample data; promotion and compact navigation remain pending.
@@ -111,6 +111,7 @@ Native/signed integration (must remain unchecked until validated):
 | 2026-10-26 | M0-01–M0-07 repository/planning foundation complete; independent acceptance IDs established | Bootstrap commit `d8d1346`; agent/contribution/setup/security docs; documentation/link/checklist/PNG audit and artifact-ignore checks passed; staged whitespace review passed after removing one trailing blank line from the prompt archive | Next implementation task: M1-01. No app code or product tests exist yet. Full-Xcode integration remains blocked; no system repair authorized. |
 | 2026-10-26 | M1-01–M1-07 complete; SEC-02/SEC-03 passed on `feat/vault-foundation`, stacked on planning baseline `11caee9` | `make build && make test` passed from a clean tracked-source export: 31 tests; independent OpenSSL fixture, synthetic database/WAL scans, rollback/reopen, and stale/cancelled session checks. `package describe`, shell syntax, and documentation/whitespace checks passed | Next: M1-08 native app scaffold and M1-09 Keychain adapter. No runnable desktop app yet. Signed Keychain/lifecycle/widget/OS compatibility and release gates remain pending; no system repair performed. |
 | 2026-10-26 | Native scaffold on `feat/native-app`, stacked on vault foundation `06359fe`; partial M1-08/M1-09/M1-11–M1-13, M2-05–M2-10, M3-01/M3-03–M3-07, M4-03/M4-04. No additional full acceptance gates checked | Clean staged-source `make build` and `make test`: 55 tests pass; `make app`: sandbox/hardened ad-hoc bundle verified; optimized executable builds; project/plist/reference checks pass. Native sample library inspected in light/dark; Focus opens with search focused. See [native evidence](docs/native-integration.md) | Next: M2-01 capture policy/monitor work through injected interfaces, plus signed M1 validation once Xcode works. Final visual repeat paused because the Mac is locked. Capture/widgets/editing/templates and native security gates remain pending; no system repair performed. |
+| 2026-10-26 | User authorized ongoing local merges; planning, vault, and native branches fast-forwarded into `main` through `4e00273`. `feat/clipboard-history` adds capture/privacy/retention; M2-01/M2-03 implemented, other native gates remain open | 67-test full suite plus the transactional Unicode-edit regression pass, including metadata-before-payload filtering, no-read baselines, exact UTF-8 duplicates, Luhn/private-key filtering, budget eviction, concurrent SQLite capture, pause persistence, and clear-history/snippet independence | Next: complete snippet/editor/pinning/navigation flows, then widget and release tooling. Actual OS permission, signed Keychain, lifecycle and widget tests remain pending. |
 
 ## 1. Product
 

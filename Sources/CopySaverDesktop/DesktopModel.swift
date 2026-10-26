@@ -36,6 +36,10 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     public var shortcutDescription = "⌥⌘V"
     public var shortcutMessage: String?
     public var recordingShortcut = false
+    public var clipboardPermission: ClipboardPermission = .unknown
+    public private(set) var storageWritable = true
+    public var onCaptureBoundary: (() -> Void)?
+    public var onRequestClipboardAccess: (() -> Void)?
     public var focusActivation = UUID()
     public private(set) var presentationActive = true
     public var onRecordShortcut: (() -> Void)?
@@ -77,6 +81,62 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     }
 
     public var canCopy: Bool { phase == .unlocked && selectedRecord != nil && !isBusy && !isPreview }
+    public var settings: VaultSettings? { phase == .unlocked && !isPreview ? try? HistoryPolicy.settings(in: records) : nil }
+    public var captureConditions: CaptureConditions {
+        CaptureConditions(vaultUnlocked: phase == .unlocked, captureEnabled: settings?.captureEnabled ?? false,
+                          manuallyPaused: settings?.manuallyPaused ?? false, clipboardPermission: clipboardPermission, storageWritable: storageWritable)
+    }
+    public var captureStatus: String {
+        if isPreview { return "Sample data" }
+        switch captureConditions.availability {
+        case .locked: return "Locked"
+        case .disabled: return "History off"
+        case .paused: return "Paused"
+        case .permissionNeeded: return "Clipboard permission needed"
+        case .storageUnavailable: return "Storage error"
+        case .ready: return "Capturing"
+        }
+    }
+
+    public func setCaptureEnabled(_ enabled: Bool) {
+        guard let settings, let next = try? settings.updating(captureEnabled: enabled) else { return }
+        saveSettings(next)
+    }
+    public func toggleCapturePause() {
+        guard let settings, let next = try? settings.updating(manuallyPaused: !settings.manuallyPaused) else { return }
+        saveSettings(next)
+    }
+    public func saveSettings(_ value: VaultSettings, confirmed: Bool = false) {
+        guard !isPreview, phase == .unlocked, !isBusy, let service else { return }
+        onCaptureBoundary?()
+        run(fallback: .unlocked, work: { try await service.updateSettings(value, confirmed: confirmed) }) { [weak self] records in
+            self?.records = records
+            self?.onCaptureBoundary?()
+            self?.notice = "Settings saved"
+        }
+    }
+    public func capture(_ sample: ClipboardSample) {
+        guard !isPreview, captureConditions.canCapture, !isBusy, let service else { return }
+        run(fallback: .unlocked, work: { try await service.capture(sample) }) { [weak self] records in
+            self?.records = records
+            self?.ensureSelection(query: self?.libraryQuery ?? "")
+        }
+    }
+    public func cleanupHistory(now: Date = Date()) {
+        guard !isPreview, phase == .unlocked, !isBusy, let service else { return }
+        run(fallback: .unlocked, work: { try await service.cleanup(now: now) }) { [weak self] records in
+            self?.records = records
+            self?.ensureSelection(query: self?.libraryQuery ?? "")
+        }
+    }
+    public func retryStorage() { storageWritable = true; cleanupHistory(); onCaptureBoundary?() }
+    public func clearHistory() {
+        guard !isPreview, phase == .unlocked, !isBusy, let service else { return }
+        run(fallback: .unlocked, work: { try await service.clearHistory() }) { [weak self] records in
+            self?.records = records; self?.ensureSelection(query: self?.libraryQuery ?? "")
+            self?.notice = "History cleared. Snippets kept."
+        }
+    }
 
     public func items(query: String, section explicitSection: LibrarySection? = nil) -> [VaultRecord] {
         guard phase == .unlocked else { return [] }
@@ -141,12 +201,15 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         run(fallback: .locked, work: { try await service.unlock() }) { [weak self] records in
             self?.records = records
             self?.phase = .unlocked
+            self?.storageWritable = true
             self?.ensureSelection(query: "")
+            self?.onCaptureBoundary?()
         }
         return operation
     }
 
     public func lock() {
+        onCaptureBoundary?()
         generation = UUID()
         operation?.cancel()
         operation = nil
@@ -282,6 +345,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
                 guard let self, self.generation == request, !Task.isCancelled else { return }
                 self.isBusy = false
                 self.phase = fallback
+                if error as? VaultError == .storageFailure { self.storageWritable = false; self.onCaptureBoundary?() }
                 if error as? VaultError == .corruptDatabase || error as? VaultError == .authenticationFailed {
                     self.lock()
                 }
@@ -295,6 +359,12 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     private static func message(for error: any Error) -> String {
         switch error {
         case RecordValidationError.invalidName: "Enter a name with 1–120 characters."
+        case RecordValidationError.invalidCategory: "Use a category with at most 60 characters."
+        case HistoryFailure.historyLimitReached: "History limit reached. Unpin or delete an item to capture more."
+        case HistoryFailure.pinnedLimitConflict: "Unpin history items before lowering this limit."
+        case HistoryFailure.snippetLimitReached: "The 2,000-snippet limit has been reached."
+        case HistoryFailure.storageCapacity: "Storage is full. Delete history or snippets and try again."
+        case HistoryFailure.confirmationRequired: "Review and confirm the history cleanup before changing these limits."
         case RecordValidationError.emptyText: "Enter some text to save."
         case RecordValidationError.textTooLarge: "This text exceeds the 256 KiB limit."
         case KeychainFailure.missingEntitlement: "macOS Keychain requires a correctly development-signed build of CopySaver."

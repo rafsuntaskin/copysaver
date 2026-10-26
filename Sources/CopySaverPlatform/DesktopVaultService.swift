@@ -10,6 +10,17 @@ public protocol DesktopVaultAccess: Sendable {
     func save(_ record: VaultRecord) async throws -> [VaultRecord]
     func delete(_ id: UUID) async throws -> [VaultRecord]
     func authenticateSensitiveAccess() async throws
+    func capture(_ sample: ClipboardSample) async throws -> [VaultRecord]
+    func updateSettings(_ settings: VaultSettings, confirmed: Bool) async throws -> [VaultRecord]
+    func cleanup(now: Date) async throws -> [VaultRecord]
+    func clearHistory() async throws -> [VaultRecord]
+}
+
+public extension DesktopVaultAccess {
+    func capture(_ sample: ClipboardSample) async throws -> [VaultRecord] { throw VaultError.storageFailure }
+    func updateSettings(_ settings: VaultSettings, confirmed: Bool) async throws -> [VaultRecord] { throw VaultError.storageFailure }
+    func cleanup(now: Date) async throws -> [VaultRecord] { throw VaultError.storageFailure }
+    func clearHistory() async throws -> [VaultRecord] { throw VaultError.storageFailure }
 }
 
 public actor DesktopVaultService: DesktopVaultAccess {
@@ -58,7 +69,12 @@ public actor DesktopVaultService: DesktopVaultAccess {
         let granted = try await vault.unlock(using: keys)
         guard generation == request else { throw VaultError.staleSession }
         access = granted
-        let records = try await vault.records(access: granted)
+        let records = try await vault.update(access: granted) { records, budget in
+            let settings = try HistoryPolicy.settings(in: records)
+            var next = try HistoryPolicy.retain(records, settings: settings, now: Date())
+            if !next.contains(where: { if case .settings = $0.payload { return true }; return false }) { next.append(try VaultRecord(.settings(settings))) }
+            return try HistoryPolicy.fit(next, settings: settings, budget: budget)
+        }
         guard generation == request else { throw VaultError.staleSession }
         return records
     }
@@ -72,8 +88,11 @@ public actor DesktopVaultService: DesktopVaultAccess {
     public func save(_ record: VaultRecord) async throws -> [VaultRecord] {
         guard let vault, let access else { throw VaultError.locked }
         let request = generation
-        try await vault.apply(saving: [record], access: access)
-        let records = try await vault.records(access: access)
+        let records = try await vault.update(access: access) { current, budget in
+            var next = current.filter { $0.id != record.id }
+            next.append(record)
+            return try HistoryPolicy.fit(next, settings: HistoryPolicy.settings(in: next), budget: budget, protecting: record.id)
+        }
         guard generation == request else { throw VaultError.staleSession }
         return records
     }
@@ -92,5 +111,42 @@ public actor DesktopVaultService: DesktopVaultAccess {
         let request = generation
         try await keys.authenticateSensitiveAccess(for: vault.vaultID)
         guard generation == request else { throw VaultError.staleSession }
+    }
+
+    public func capture(_ sample: ClipboardSample) async throws -> [VaultRecord] {
+        try await mutate { records, budget in
+            let settings = try HistoryPolicy.settings(in: records)
+            guard settings.captureEnabled, !settings.manuallyPaused else { throw VaultError.staleSession }
+            return try HistoryPolicy.capture(sample, in: records, budget: budget)
+        }
+    }
+
+    public func cleanup(now: Date) async throws -> [VaultRecord] {
+        try await mutate { records, budget in
+            let settings = try HistoryPolicy.settings(in: records)
+            return try HistoryPolicy.fit(HistoryPolicy.retain(records, settings: settings, now: now), settings: settings, budget: budget)
+        }
+    }
+
+    public func updateSettings(_ settings: VaultSettings, confirmed: Bool) async throws -> [VaultRecord] {
+        try await mutate { records, budget in
+            var next = records.filter { if case .settings = $0.payload { return false }; return true }
+            next.append(try VaultRecord(.settings(settings)))
+            let retained = try HistoryPolicy.fit(HistoryPolicy.retain(next, settings: settings, now: Date()), settings: settings, budget: budget)
+            if retained.count < next.count && !confirmed { throw HistoryFailure.confirmationRequired }
+            return retained
+        }
+    }
+
+    public func clearHistory() async throws -> [VaultRecord] {
+        try await mutate { records, _ in records.filter { if case .history = $0.payload { return false }; return true } }
+    }
+
+    private func mutate(_ transform: @escaping @Sendable ([VaultRecord], Int) throws -> [VaultRecord]) async throws -> [VaultRecord] {
+        guard let vault, let access else { throw VaultError.locked }
+        let request = generation
+        let records = try await vault.update(access: access, transform: transform)
+        guard generation == request else { throw VaultError.staleSession }
+        return records
     }
 }

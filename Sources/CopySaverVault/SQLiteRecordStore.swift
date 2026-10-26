@@ -12,7 +12,7 @@ struct VaultHeader: Equatable, Sendable {
 final class SQLiteRecordStore {
     static let schemaVersion = 1
     private var database: OpaquePointer?
-    private let payloadBudget: Int
+    let payloadBudget: Int
     private(set) var header: VaultHeader
 
     private var transient: sqlite3_destructor_type { unsafeBitCast(-1, to: sqlite3_destructor_type.self) }

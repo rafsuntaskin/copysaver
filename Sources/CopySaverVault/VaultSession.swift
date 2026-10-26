@@ -138,6 +138,25 @@ public actor VaultSession {
 
     public func checkpoint() throws { try store.checkpoint() }
 
+    /// Read/plan/commit executes in one actor turn, so concurrent captures and edits
+    /// cannot replace each other's records or cross a completed lock transition.
+    public func update(access session: VaultAccess, transform: @Sendable ([VaultRecord], Int) throws -> [VaultRecord]) throws -> [VaultRecord] {
+        let current = try records(access: session)
+        guard let verification = try store.record(id: store.header.verificationID) else { throw VaultError.corruptDatabase }
+        let next = try transform(current, store.payloadBudget - verification.sealedData.count)
+        guard Set(next.map(\.id)).count == next.count else { throw VaultError.invalidRecord }
+        let previous = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
+        let removed = Set(current.map(\.id)).subtracting(next.map(\.id))
+        // Swift String equality treats canonically equivalent Unicode as equal;
+        // the persisted payload must preserve exact UTF-8 even on an in-place edit.
+        let changed = try next.filter { record in
+            guard let old = previous[record.id] else { return true }
+            return try RecordCodec.encode(old) != RecordCodec.encode(record)
+        }
+        try apply(saving: changed, deleting: removed, access: session)
+        return next
+    }
+
     private func lockOnIntegrityFailure(_ error: any Error) {
         guard let error = error as? VaultError else { return }
         switch error {

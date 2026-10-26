@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import CopySaverDomain
 
 struct FocusView: View {
     @Bindable var model: DesktopModel
@@ -23,7 +25,7 @@ struct FocusView: View {
                         Text("Snippets").tag(LibrarySection.snippets)
                     }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("History or snippets").frame(width: 220)
                     Spacer()
-                    Label(model.isPreview ? "Sample data" : "History off", systemImage: model.isPreview ? "eye" : "pause.circle")
+                    Label(model.captureStatus, systemImage: model.isPreview ? "eye" : "pause.circle")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }.padding(.horizontal, 22).padding(.bottom, 16)
                 Divider()
@@ -87,6 +89,7 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 Text("Settings").font(.system(size: 22, weight: .semibold))
+                FeedbackView(model: model)
                 VStack(alignment: .leading, spacing: 12) {
                     Text("General").font(.headline)
                     AppearanceSettings()
@@ -103,9 +106,11 @@ struct SettingsView: View {
                     if let message = model.shortcutMessage { Label(message, systemImage: "exclamationmark.circle").foregroundStyle(.secondary) }
                 }
                 Divider()
+                HistorySettingsView(model: model)
+                Divider()
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Privacy & Security").font(.headline)
-                    Text("Keys stay in macOS Keychain. Locking clears this window’s content. Clipboard history is not enabled in this development scaffold.")
+                    Text("Stored content is encrypted locally. Locking pauses capture and clears decrypted content from the interface.")
                     Text("Portable encrypted backup is not available yet. Keep another copy of important information.").foregroundStyle(.secondary)
                 }
                 Divider()
@@ -122,4 +127,83 @@ struct AppearanceRoot<Content: View>: View {
     @AppStorage("appearance") private var appearance = "system"
     let content: Content
     var body: some View { content.preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil) }
+}
+
+private struct HistorySettingsView: View {
+    @Bindable var model: DesktopModel
+    @State private var count = 1_000
+    @State private var days = 30
+    @State private var timeout = IdleLockTimeout.fifteenMinutes
+    @State private var excluded = ""
+    @State private var proposed: VaultSettings?
+    @State private var removalCount = 0
+    @State private var confirmLimits = false
+    @State private var confirmClear = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("History").font(.headline)
+            if let settings = model.settings {
+                Toggle("Keep clipboard history", isOn: Binding(get: { settings.captureEnabled }, set: { model.setCaptureEnabled($0) }))
+                    .disabled(model.isPreview || model.isBusy)
+                Text("Capture pauses while locked. Copies made before enabling or resuming are skipped.").foregroundStyle(.secondary)
+                HStack {
+                    Label(model.captureStatus, systemImage: model.captureConditions.canCapture ? "record.circle" : "pause.circle")
+                    if settings.captureEnabled {
+                        Button(settings.manuallyPaused ? "Resume" : "Pause") { model.toggleCapturePause() }.disabled(model.isBusy || model.isPreview)
+                    }
+                    if !model.storageWritable { Button("Retry storage") { model.retryStorage() }.disabled(model.isBusy) }
+                }
+                if settings.captureEnabled && model.clipboardPermission != .allowed && !model.isPreview {
+                    Text("macOS needs clipboard permission. Request access, then choose Always Allow for CopySaver in System Settings → Privacy & Security → Paste from Other Apps. Request access inspects the current clipboard only to show the system prompt; that value is discarded.")
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Button("Request clipboard access") { model.onRequestClipboardAccess?() }
+                        Button("Open System Settings") { NSWorkspace.shared.open(URL(filePath: "/System/Applications/System Settings.app")) }
+                    }
+                }
+                Stepper("Keep up to \(count) items", value: $count, in: 100...5_000, step: 100)
+                Picker("Expire unpinned history", selection: $days) {
+                    ForEach([1, 7, 30, 90], id: \.self) { Text("\($0) days").tag($0) }
+                }.frame(maxWidth: 320)
+                Picker("Lock after inactivity", selection: $timeout) {
+                    Text("5 minutes").tag(IdleLockTimeout.fiveMinutes)
+                    Text("15 minutes").tag(IdleLockTimeout.fifteenMinutes)
+                    Text("30 minutes").tag(IdleLockTimeout.thirtyMinutes)
+                    Text("System lock only").tag(IdleLockTimeout.systemLockOnly)
+                }.frame(maxWidth: 320)
+                Text("Excluded applications").fontWeight(.medium)
+                Text("One bundle identifier per line. Browser exclusions cover every window, including private windows. Attribution and secret detection are best effort.").foregroundStyle(.secondary)
+                TextEditor(text: $excluded).font(.system(size: 12, design: .monospaced)).frame(height: 70)
+                    .border(Color(nsColor: .separatorColor)).accessibilityLabel("Excluded application bundle identifiers")
+                HStack {
+                    Button("Apply history settings") { proposeSettings(settings) }.disabled(model.isBusy || model.isPreview)
+                    Button("Clear history…", role: .destructive) { confirmClear = true }.disabled(model.isBusy || model.isPreview)
+                }
+            } else { Text("Unlock the vault to change history preferences.").foregroundStyle(.secondary) }
+            Text("Concealed and transient copies are always skipped. Private-key and card-number filters can miss secrets; explicitly save private text as a sensitive snippet.").foregroundStyle(.secondary)
+        }
+        .task { load() }
+        .onChange(of: model.settings) { _, _ in load() }
+        .confirmationDialog("Remove \(removalCount) history items?", isPresented: $confirmLimits, titleVisibility: .visible) {
+            Button("Apply limits and remove history", role: .destructive) { if let proposed { model.saveSettings(proposed, confirmed: true) }; proposed = nil }
+            Button("Cancel", role: .cancel) { proposed = nil }
+        } message: { Text("Pinned items and snippets are kept. Removed history cannot be restored.") }
+        .confirmationDialog("Clear all clipboard history?", isPresented: $confirmClear, titleVisibility: .visible) {
+            Button("Clear history", role: .destructive) { model.clearHistory() }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("This removes all history, including pinned items. Named snippets are kept. This cannot be undone.") }
+    }
+    private func load() {
+        guard let settings = model.settings else { return }
+        count = settings.historyCountLimit; days = settings.retentionDays; timeout = settings.idleLockTimeout
+        excluded = settings.excludedBundleIDs.sorted().joined(separator: "\n")
+    }
+    private func proposeSettings(_ current: VaultSettings) {
+        let ids = Set(excluded.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        guard let next = try? current.updating(historyCountLimit: count, retentionDays: days, excludedBundleIDs: ids, idleLockTimeout: timeout) else { return }
+        if let retained = try? HistoryPolicy.retain(model.records, settings: next, now: Date()), retained.count < model.records.count {
+            proposed = next; removalCount = model.records.count - retained.count; confirmLimits = true
+        } else { model.saveSettings(next) }
+    }
 }

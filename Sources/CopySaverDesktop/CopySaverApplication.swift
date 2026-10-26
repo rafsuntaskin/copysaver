@@ -28,6 +28,7 @@ public enum CopySaverApplication {
 @MainActor private final class ApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
     private let model: DesktopModel
     private let clipboard: SystemClipboardOutput?
+    private let monitor: ClipboardMonitor?
     private let shortcut = GlobalShortcut()
     private var library: NSWindow?
     private var panel: FocusPanel?
@@ -35,6 +36,8 @@ public enum CopySaverApplication {
     private var previousApp: NSRunningApplication?
     private var observers: [NSObjectProtocol] = []
     private var idleTimer: Timer?
+    private var captureTimer: Timer?
+    private var cleanupTimer: Timer?
     private var recorder: Any?
     private let scheme: String
 
@@ -43,6 +46,7 @@ public enum CopySaverApplication {
         scheme = Bundle.main.object(forInfoDictionaryKey: "CopySaverURLScheme") as? String ?? "copysaver-dev"
         if preview {
             clipboard = nil
+            monitor = nil
             model = DesktopModel(service: nil, clipboard: nil, preview: true)
         } else if let identifier,
                   let keys = try? KeychainVaultKeyProvider(bundleIdentifier: identifier),
@@ -50,9 +54,11 @@ public enum CopySaverApplication {
             let location = support.appendingPathComponent(identifier, isDirectory: true).appendingPathComponent("vault.sqlite")
             let output = SystemClipboardOutput(bundleIdentifier: identifier)
             clipboard = output
+            monitor = ClipboardMonitor(input: SystemClipboardInput(), ownIdentifier: identifier)
             model = DesktopModel(service: DesktopVaultService(url: location, keys: keys), clipboard: output)
         } else {
             clipboard = nil
+            monitor = nil
             model = DesktopModel(service: nil, clipboard: nil)
         }
         super.init()
@@ -65,6 +71,8 @@ public enum CopySaverApplication {
         model.onRecordShortcut = { [weak self] in self?.recordShortcut() }
         model.onRestoreShortcut = { [weak self] in self?.setShortcut(.standard) }
         model.onClearShortcut = { [weak self] in self?.clearShortcut() }
+        model.onCaptureBoundary = { [weak self] in self?.monitor?.suspend() }
+        model.onRequestClipboardAccess = { [weak self] in self?.monitor?.requestAccess() }
         shortcut.onPress = { [weak self] in self?.toggleFocus() }
         installMenu()
         installLifecycleObservers()
@@ -91,6 +99,8 @@ public enum CopySaverApplication {
         shortcut.stop()
         cancelRecording()
         idleTimer?.invalidate()
+        captureTimer?.invalidate()
+        cleanupTimer?.invalidate()
         clipboard?.clearOwnedSensitiveCopy()
         return .terminateNow
     }
@@ -228,6 +238,9 @@ public enum CopySaverApplication {
 
     private func installLifecycleObservers() {
         let workspace = NSWorkspace.shared.notificationCenter
+        observers.append(workspace.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.monitor?.rebaseline() }
+        })
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.screensDidSleepNotification] {
             observers.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.model.lock() }
@@ -254,9 +267,25 @@ public enum CopySaverApplication {
         idleTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, !self.model.isPreview, self.model.phase == .unlocked,
+                      let timeout = self.model.settings?.idleLockTimeout.interval,
                       let anyInput = CGEventType(rawValue: UInt32.max) else { return }
-                if CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput) >= 900 { self.model.lock() }
+                if CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput) >= timeout { self.model.lock() }
             }
+        }
+        captureTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let monitor = self.monitor else { return }
+                guard self.model.phase == .unlocked, self.model.settings?.captureEnabled == true,
+                      self.model.settings?.manuallyPaused == false else { monitor.suspend(); return }
+                self.model.clipboardPermission = monitor.permission
+                guard !self.model.isBusy else { return }
+                if let sample = monitor.poll(conditions: self.model.captureConditions, exclusions: self.model.settings?.excludedBundleIDs ?? []) {
+                    self.model.capture(sample)
+                }
+            }
+        }
+        cleanupTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.cleanupHistory() }
         }
     }
 

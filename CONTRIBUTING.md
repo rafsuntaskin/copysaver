@@ -4,7 +4,7 @@
 
 Read [spec.md](spec.md), [AGENTS.md](AGENTS.md), and [development setup](docs/development.md). The spec defines v0.1 scope, security requirements, and stable delivery checklist IDs. Update it alongside implementation rather than maintaining a competing task list.
 
-The repository contains core/platform/desktop Swift libraries and tests, a runnable sample-data development app, an Xcode app project, planning documents, and design references. Clipboard capture, the widget target, and signed native validation are pending. Do not describe planned commands, app downloads, signed validation, or release artifacts as available until they exist and have been verified.
+The repository contains core/platform/desktop Swift libraries and tests, a runnable sample-data development app, an Xcode app project, planning documents, and design references. Clipboard capture and retention are implemented; the widget target and signed native validation are pending. Do not describe planned commands, app downloads, signed validation, or release artifacts as available until they exist and have been verified.
 
 ## Branches
 
