@@ -29,6 +29,12 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     public var draftName = ""
     public var draftBody = ""
     public var draftSensitive = false
+    public var draftCategory = ""
+    public private(set) var editingSnippet: Snippet?
+    public private(set) var draftAuthorized = true
+    public var compactShowDetail = false
+    public var isFocusPresented = false
+    public var onConfirmDiscardDraft: (() -> Bool)?
     public private(set) var revealedID: UUID?
     public var onOpenLibrary: (() -> Void)?
     public var onOpenFocus: (() -> Void)?
@@ -77,7 +83,17 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
 
     public var selectedRecord: VaultRecord? {
         guard phase == .unlocked else { return nil }
-        return records.first { $0.id == selectedID }
+        return items(query: isFocusPresented ? focusQuery : libraryQuery).first { $0.id == selectedID }
+    }
+    public var hasDirtyDraft: Bool { isCreatingSnippet && (!draftName.isEmpty || !draftBody.isEmpty) }
+    public var draftNeedsAuthentication: Bool { isCreatingSnippet && (draftSensitive || editingSnippet?.isSensitive == true) && !draftAuthorized }
+    public func navigate(to section: LibrarySection) { self.section = section; libraryQuery = ""; compactShowDetail = false }
+    public func selectRecord(_ id: UUID) {
+        if hasDirtyDraft && selectedID != id {
+            guard onConfirmDiscardDraft?() == true else { return }
+            discardDraft()
+        }
+        selectedID = id; compactShowDetail = true
     }
 
     public var canCopy: Bool { phase == .unlocked && selectedRecord != nil && !isBusy && !isPreview }
@@ -119,21 +135,21 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         guard !isPreview, captureConditions.canCapture, !isBusy, let service else { return }
         run(fallback: .unlocked, work: { try await service.capture(sample) }) { [weak self] records in
             self?.records = records
-            self?.ensureSelection(query: self?.libraryQuery ?? "")
+            self?.ensureSelection(query: self?.isFocusPresented == true ? self?.focusQuery ?? "" : self?.libraryQuery ?? "")
         }
     }
     public func cleanupHistory(now: Date = Date()) {
         guard !isPreview, phase == .unlocked, !isBusy, let service else { return }
         run(fallback: .unlocked, work: { try await service.cleanup(now: now) }) { [weak self] records in
             self?.records = records
-            self?.ensureSelection(query: self?.libraryQuery ?? "")
+            self?.ensureSelection(query: self?.isFocusPresented == true ? self?.focusQuery ?? "" : self?.libraryQuery ?? "")
         }
     }
     public func retryStorage() { storageWritable = true; cleanupHistory(); onCaptureBoundary?() }
     public func clearHistory() {
         guard !isPreview, phase == .unlocked, !isBusy, let service else { return }
         run(fallback: .unlocked, work: { try await service.clearHistory() }) { [weak self] records in
-            self?.records = records; self?.ensureSelection(query: self?.libraryQuery ?? "")
+            self?.records = records; self?.ensureSelection(query: self?.isFocusPresented == true ? self?.focusQuery ?? "" : self?.libraryQuery ?? "")
             self?.notice = "History cleared. Snippets kept."
         }
     }
@@ -233,27 +249,86 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         }
     }
 
-    public func beginSnippet() {
-        guard phase == .unlocked, !isPreview, !isBusy else { return }
+    @discardableResult public func beginSnippet(template: SnippetTemplate = .general) -> Bool {
+        guard phase == .unlocked, !isPreview, !isBusy else { return false }
+        if hasDirtyDraft && onConfirmDiscardDraft?() != true { return false }
         discardDraft()
         section = .snippets
         isCreatingSnippet = true
+        compactShowDetail = true
+        draftCategory = template.rawValue
+        draftBody = template.body
+        draftSensitive = template.sensitive
+        return true
+    }
+
+    public func editSelection() {
+        guard !isPreview, !isBusy, let service, case .snippet(let snippet) = selectedRecord?.payload else { return }
+        if hasDirtyDraft && onConfirmDiscardDraft?() != true { return }
+        let presentation = sensitivePresentation
+        run(fallback: .unlocked, work: {
+            if snippet.isSensitive { try await service.authenticateSensitiveAccess() }
+            return snippet
+        }) { [weak self] snippet in
+            guard let self, self.selectedRecord?.id == snippet.id,
+                  !snippet.isSensitive || (self.presentationActive && self.sensitivePresentation == presentation) else { return }
+            self.discardDraft()
+            self.editingSnippet = snippet
+            self.draftName = snippet.name; self.draftBody = snippet.body
+            self.draftCategory = snippet.category ?? ""; self.draftSensitive = snippet.isSensitive
+            self.draftAuthorized = true; self.isCreatingSnippet = true; self.compactShowDetail = true
+        }
+    }
+
+    public func resumeSensitiveDraft() {
+        guard !isPreview, draftNeedsAuthentication, !isBusy, let service else { return }
+        let presentation = sensitivePresentation
+        run(fallback: .unlocked, work: { try await service.authenticateSensitiveAccess() }) { [weak self] _ in
+            guard let self, self.presentationActive, self.sensitivePresentation == presentation, self.isCreatingSnippet else { return }
+            self.draftAuthorized = true
+        }
+    }
+
+    public func promoteSelection() {
+        guard case .history(let item) = selectedRecord?.payload, !isPreview, !isBusy else { return }
+        guard beginSnippet() else { return }
+        draftBody = item.text
+    }
+
+    public func toggleSelectedPin() {
+        guard !isPreview, !isBusy, let service, case .history(let item) = selectedRecord?.payload,
+              let updated = try? item.settingPinned(!item.isPinned), let record = try? VaultRecord(.history(updated)) else { return }
+        run(fallback: .unlocked, work: { try await service.save(record) }) { [weak self] records in self?.records = records; self?.ensureSelection(query: self?.libraryQuery ?? "") }
     }
 
     public func discardDraft() {
         draftName = ""
         draftBody = ""
         draftSensitive = false
+        draftCategory = ""
+        editingSnippet = nil
+        draftAuthorized = true
         isCreatingSnippet = false
     }
 
     public func saveDraft() {
-        guard phase == .unlocked, !isPreview, !isBusy, let service else { return }
+        guard phase == .unlocked, !isPreview, !isBusy, !draftNeedsAuthentication, let service else { return }
         do {
             let now = Date()
-            let snippet = try Snippet(name: draftName, body: draftBody, isSensitive: draftSensitive, createdAt: now, updatedAt: now)
+            let original = editingSnippet
+            let snippet = try Snippet(id: original?.id ?? UUID(), name: draftName, body: draftBody, category: draftCategory,
+                                      isSensitive: draftSensitive, createdAt: original?.createdAt ?? now,
+                                      updatedAt: max(original?.updatedAt ?? now, now), lastCopiedAt: original?.lastCopiedAt)
             let record = try VaultRecord(.snippet(snippet))
-            run(fallback: .unlocked, work: { try await service.save(record) }) { [weak self] records in
+            let presentation = sensitivePresentation
+            run(fallback: .unlocked, work: { [weak self] in
+                if original?.isSensitive == true {
+                    try await service.authenticateSensitiveAccess()
+                    let admitted = await MainActor.run { self?.sensitivePresentation == presentation && self?.presentationActive == true }
+                    guard admitted else { throw CancellationError() }
+                }
+                return try await service.save(record)
+            }) { [weak self] records in
                 self?.records = records
                 self?.discardDraft()
                 self?.selectedID = record.id
@@ -266,7 +341,8 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         guard phase == .unlocked, !isPreview, !isBusy, let service, let id = selectedID else { return }
         run(fallback: .unlocked, work: { try await service.delete(id) }) { [weak self] records in
             self?.records = records
-            self?.ensureSelection(query: self?.libraryQuery ?? "")
+            if self?.editingSnippet?.id == id { self?.discardDraft() }
+            self?.ensureSelection(query: self?.isFocusPresented == true ? self?.focusQuery ?? "" : self?.libraryQuery ?? "")
         }
     }
 
@@ -289,6 +365,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         revealedID = nil
         revealExpiry?.cancel()
         revealExpiry = nil
+        if draftSensitive || editingSnippet?.isSensitive == true { draftAuthorized = false }
     }
 
     public func setPresentationActive(_ active: Bool) {
@@ -305,20 +382,66 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         #endif
     }
 
-    public func copySelection(dismissFocus: Bool = false) {
-        guard canCopy, let service, let record = selectedRecord else { return }
+    public func copySelection(dismissFocus: Bool = false, selectedText: String? = nil) {
+        guard canCopy, let service, let record = selectedRecord, selectedText == nil || !record.isSensitive else { return }
         let presentation = sensitivePresentation
-        run(fallback: .unlocked, work: {
-            if record.isSensitive { try await service.authenticateSensitiveAccess() }
-            return record
-        }) { [weak self] record in
-            guard let self, self.selectedID == record.id, let clipboard = self.clipboard,
-                  !record.isSensitive || (self.presentationActive && self.sensitivePresentation == presentation) else { return }
+        let request = generation
+        operation?.cancel(); isBusy = true; notice = nil; errorMessage = nil
+        operation = Task { [weak self] in
+            var copied = false
             do {
-                try clipboard.copy(record.content, sensitive: record.isSensitive)
+                if record.isSensitive { try await service.authenticateSensitiveAccess() }
+                guard let self, self.generation == request, !Task.isCancelled,
+                      self.selectedRecord?.id == record.id, let clipboard = self.clipboard,
+                      !record.isSensitive || (self.presentationActive && self.sensitivePresentation == presentation) else {
+                    if let self, self.generation == request { self.isBusy = false }; return
+                }
+                try clipboard.copy(selectedText ?? record.content, sensitive: record.isSensitive)
+                copied = true
+                let updated = try await service.markCopied(record.id, date: Date())
+                guard self.generation == request, !Task.isCancelled else { return }
+                self.records = updated
+                self.isBusy = false
                 self.notice = "Copied"
                 if dismissFocus { self.onDismissFocus?() }
+            } catch {
+                guard let self, self.generation == request, !Task.isCancelled else { return }
+                self.isBusy = false
+                if error as? VaultError == .storageFailure { self.storageWritable = false; self.onCaptureBoundary?() }
+                if copied { self.notice = "Copied"; self.errorMessage = "Copied, but the last-copy time could not be saved." }
+                else if error as? KeychainFailure != .cancelled, !(error is CancellationError) {
+                    self.errorMessage = error is ClipboardFailure ? "Copy failed. Please try again." : Self.message(for: error)
+                }
+            }
+        }
+    }
+
+    public func copyDraftText(_ text: String, onSuccess: @escaping @MainActor () -> Void) {
+        guard !isPreview, !isBusy, phase == .unlocked, isCreatingSnippet, !draftNeedsAuthentication,
+              text.utf8.count <= RecordLimits.maximumTextBytes, let service, let clipboard else { return }
+        let sensitive = draftSensitive || editingSnippet?.isSensitive == true
+        let presentation = sensitivePresentation
+        run(fallback: .unlocked, work: {
+            if sensitive { try await service.authenticateSensitiveAccess() }
+        }) { [weak self] _ in
+            guard let self, self.isCreatingSnippet,
+                  !sensitive || (self.presentationActive && self.sensitivePresentation == presentation) else { return }
+            do {
+                try clipboard.copy(text, sensitive: sensitive)
+                self.notice = "Copied"
+                onSuccess()
             } catch { self.errorMessage = "Copy failed. Please try again." }
+        }
+    }
+
+    public func resetVault() {
+        guard !isPreview, !isBusy, let service else { return }
+        lock()
+        let locking = lockingOperation
+        run(fallback: .locked, work: { await locking?.value; try await service.reset() }) { [weak self] _ in
+            self?.phase = .needsSetup
+            self?.storageWritable = true
+            self?.notice = "Vault reset. Create a new vault to continue."
         }
     }
 

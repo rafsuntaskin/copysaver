@@ -24,7 +24,8 @@ private actor TestVault: DesktopVaultAccess {
     func create() {}
     func unlock() async -> [VaultRecord] { await unlockGate?.wait(); return records }
     func lock() {}
-    func save(_ record: VaultRecord) -> [VaultRecord] { records.append(record); return records }
+    func save(_ record: VaultRecord) -> [VaultRecord] { records.removeAll { $0.id == record.id }; records.append(record); return records }
+    func markCopied(_ id: UUID, date: Date) throws -> [VaultRecord] { records = try records.map { $0.id == id ? try $0.markingCopied(at: date) : $0 }; return records }
     func delete(_ id: UUID) -> [VaultRecord] { records.removeAll { $0.id == id }; return records }
     func authenticateSensitiveAccess() async throws {
         authenticationCalls += 1
@@ -241,4 +242,103 @@ private func sensitiveRecord() throws -> VaultRecord {
     #expect(snippet.name == "Synthetic address")
     #expect(snippet.body == "  example\nsecond line\t")
     #expect(model.draftName.isEmpty && model.draftBody.isEmpty)
+}
+
+@MainActor @Test func sensitiveEditAndSensitivityChangeEachRequireAuthenticationAndHideOnDeactivate() async throws {
+    let record = try sensitiveRecord()
+    let vault = TestVault(records: [record])
+    let model = DesktopModel(service: vault, clipboard: TestClipboard())
+    model.section = .snippets
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    model.editSelection(); await model.finishPendingOperations()
+    #expect(await vault.authenticationCalls == 1)
+    #expect(model.editingSnippet?.id == record.id && !model.draftNeedsAuthentication)
+    model.draftSensitive = false
+    model.setPresentationActive(false)
+    #expect(model.draftNeedsAuthentication)
+    model.setPresentationActive(true)
+    model.resumeSensitiveDraft(); await model.finishPendingOperations()
+    #expect(await vault.authenticationCalls == 2)
+    model.draftBody = "Synthetic revised text"
+    model.saveDraft(); await model.finishPendingOperations()
+    #expect(await vault.authenticationCalls == 3)
+    guard case .snippet(let stored) = model.selectedRecord?.payload else { Issue.record("Missing saved edit"); return }
+    #expect(stored.id == record.id && !stored.isSensitive && stored.body == "Synthetic revised text")
+}
+
+@MainActor @Test func cardTemplateIsSensitiveAndPromotionCreatesIndependentSnippet() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.history(HistoryItem(text: "  Synthetic promoted text\n", firstSeenAt: date, lastSeenAt: date)))
+    let vault = TestVault(records: [record])
+    let model = DesktopModel(service: vault, clipboard: TestClipboard())
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    model.promoteSelection(); model.draftName = "Synthetic snippet"
+    model.saveDraft(); await model.finishPendingOperations()
+    #expect(model.records.contains { $0.id == record.id })
+    guard case .snippet(let snippet) = model.selectedRecord?.payload else { Issue.record("Missing promotion"); return }
+    #expect(snippet.id != record.id && snippet.body == "  Synthetic promoted text\n")
+    model.beginSnippet(template: .card)
+    #expect(model.draftSensitive && model.draftCategory == "Card")
+    #expect(!model.draftBody.contains("CVV") && !model.draftBody.contains("PIN"))
+    model.lock(); await model.finishPendingOperations()
+    #expect(model.draftBody.isEmpty && model.editingSnippet == nil)
+}
+
+@MainActor @Test func unicodeSearchPreservesExactCopyAndExcludesSensitiveBodies() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.snippet(Snippet(name: "Café", body: "  naïve\n東京  ", createdAt: date, updatedAt: date)))
+    let vault = TestVault(records: [record, try sensitiveRecord()])
+    let model = DesktopModel(service: vault, clipboard: TestClipboard())
+    model.section = .snippets
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    #expect(model.items(query: "CAFÉ").count == 1)
+    #expect(model.items(query: "東京").first?.id == record.id)
+    #expect(model.items(query: "private body").isEmpty)
+    model.selectedID = record.id
+    model.copySelection(); await model.finishPendingOperations()
+    guard case .snippet(let copied) = model.selectedRecord?.payload else { Issue.record("Missing record"); return }
+    #expect(copied.body == "  naïve\n東京  " && copied.lastCopiedAt != nil)
+}
+
+@MainActor @Test func sensitiveDraftCopyAuthenticatesAndCancelledCutDoesNotMutate() async throws {
+    let vault = TestVault(records: [try sensitiveRecord()])
+    let clipboard = TestClipboard()
+    let model = DesktopModel(service: vault, clipboard: clipboard)
+    model.section = .snippets
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    model.editSelection(); await model.finishPendingOperations()
+    var cuts = 0
+    model.copyDraftText("Synthetic selection") { cuts += 1 }
+    await model.finishPendingOperations()
+    #expect(await vault.authenticationCalls == 2 && clipboard.copies == 1 && cuts == 1)
+    model.setPresentationActive(false); model.setPresentationActive(true)
+    model.copyDraftText("Synthetic selection") { cuts += 1 }
+    await model.finishPendingOperations()
+    #expect(clipboard.copies == 1 && cuts == 1)
+}
+
+@MainActor @Test func cancellingDraftReplacementPreservesUnsavedText() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.history(HistoryItem(text: "Synthetic history", firstSeenAt: date, lastSeenAt: date)))
+    let model = DesktopModel(service: TestVault(records: [record]), clipboard: TestClipboard())
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    model.beginSnippet(); model.draftBody = "Synthetic draft"
+    model.onConfirmDiscardDraft = { false }
+    model.promoteSelection()
+    #expect(model.draftBody == "Synthetic draft")
+    #expect(!model.beginSnippet(template: .card))
+    #expect(model.draftBody == "Synthetic draft")
+}
+
+@MainActor @Test func cancelledDraftCopyNeverInvokesCutCompletion() async throws {
+    let vault = TestVault(authenticationFailure: .cancelled)
+    let clipboard = TestClipboard()
+    let model = DesktopModel(service: vault, clipboard: clipboard)
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    model.beginSnippet(template: .card)
+    var cuts = 0
+    model.copyDraftText("Synthetic selection") { cuts += 1 }
+    await model.finishPendingOperations()
+    #expect(cuts == 0 && clipboard.copies == 0)
+    #expect(model.notice == nil)
 }

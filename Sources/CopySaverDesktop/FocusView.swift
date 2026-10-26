@@ -29,16 +29,19 @@ struct FocusView: View {
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }.padding(.horizontal, 22).padding(.bottom, 16)
                 Divider()
+                ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 3) {
                         ForEach(model.items(query: model.focusQuery)) { record in
-                            RecordRow(record: record, selected: record.id == model.selectedID) { model.selectedID = record.id }
+                            RecordRow(record: record, selected: record.id == model.selectedID) { model.selectRecord(record.id) }.id(record.id)
                         }
                         if model.items(query: model.focusQuery).isEmpty {
                             Text(model.focusQuery.isEmpty ? "No saved text in this view yet." : "No matches. Try another search.")
                                 .font(.system(size: 13)).foregroundStyle(.secondary).padding(30)
                         }
                     }.padding(10)
+                }
+                .onChange(of: model.selectedID) { _, id in if let id { proxy.scrollTo(id, anchor: .center) } }
                 }
                 FeedbackView(model: model).padding(.horizontal, 20)
                 Divider()
@@ -93,6 +96,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("General").font(.headline)
                     AppearanceSettings()
+                    LoginSettingsView(preview: model.isPreview)
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 12) {

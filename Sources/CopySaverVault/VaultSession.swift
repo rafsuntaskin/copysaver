@@ -137,6 +137,7 @@ public actor VaultSession {
     }
 
     public func checkpoint() throws { try store.checkpoint() }
+    public func close() throws { lock(); try store.close() }
 
     /// Read/plan/commit executes in one actor turn, so concurrent captures and edits
     /// cannot replace each other's records or cross a completed lock transition.

@@ -64,3 +64,12 @@ func ordinaryTextCanBeCaptured(text: String) { #expect(ClipboardPolicy.allows(te
 @Test func oversizedClipboardTextIsRejectedWithoutTruncation() {
     #expect(!ClipboardPolicy.allows(text: String(repeating: "a", count: 262_145)))
 }
+
+@Test func snippetCountAndPinnedLimitAreEnforcedBeforeEviction() throws {
+    let rows = try (0..<2_001).map { index in
+        try VaultRecord(.snippet(Snippet(name: "Synthetic \(index)", body: "sample", createdAt: epoch, updatedAt: epoch)))
+    }
+    #expect(throws: HistoryFailure.snippetLimitReached) { try HistoryPolicy.fit(rows, settings: VaultSettings(), budget: Int.max) }
+    let pins = try (0..<101).map { try history("pin \($0)", pinned: true) }
+    #expect(throws: HistoryFailure.pinnedLimitConflict) { try HistoryPolicy.fit(pins, settings: VaultSettings(historyCountLimit: 100), budget: Int.max) }
+}

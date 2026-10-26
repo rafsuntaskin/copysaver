@@ -12,6 +12,10 @@ private actor MemoryKeychain: KeychainTransport {
     var reads = 0
     var unavailable = false
     var adds = 0
+    var readCancelled = false
+    var keyCount: Int { values.count }
+    func removeAll() { values.removeAll() }
+    func cancelReads() { readCancelled = true }
     func add(_ key: Data, identity: KeychainIdentity) throws {
         let slot = identity.service + identity.account
         guard values[slot] == nil else { throw KeychainFailure.duplicateKey }
@@ -20,6 +24,7 @@ private actor MemoryKeychain: KeychainTransport {
     }
     func read(identity: KeychainIdentity, reason: String) throws -> Data {
         reads += 1
+        if readCancelled { throw KeychainFailure.cancelled }
         if unavailable { throw KeychainFailure.unavailable }
         guard let data = values[identity.service + identity.account] else { throw KeychainFailure.missingKey }
         return data
@@ -166,4 +171,55 @@ func malformedOrForeignNavigationHasNoAction(value: String) throws {
     records = try await reopened.clearHistory()
     #expect(records.contains(snippet))
     #expect(!records.contains { if case .history = $0.payload { return true }; return false })
+}
+
+@Test func explicitMissingKeyResetRemovesOnlyTheOwnedVaultAndReturnsToSetup() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("copysaver-reset-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("vault.sqlite")
+    let transport = MemoryKeychain()
+    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.dev", transport: transport)
+    let service = DesktopVaultService(url: url, keys: provider)
+    try await service.create(); _ = try await service.unlock(); await service.lock()
+    let neighbor = directory.appendingPathComponent("unrelated.txt")
+    try Data("Synthetic unrelated".utf8).write(to: neighbor)
+    await transport.removeAll()
+    try await service.reset()
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+    #expect(FileManager.default.fileExists(atPath: neighbor.path))
+    #expect(try await service.prepare() == false)
+    try await service.create()
+    #expect(try await service.unlock().count == 1)
+}
+
+@Test func cancelledResetPreservesVaultAndKey() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("copysaver-reset-cancel-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("vault.sqlite")
+    let transport = MemoryKeychain()
+    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.dev", transport: transport)
+    let service = DesktopVaultService(url: url, keys: provider)
+    try await service.create(); _ = try await service.unlock(); await service.lock()
+    await transport.cancelReads()
+    await #expect(throws: KeychainFailure.cancelled) { try await service.reset() }
+    #expect(FileManager.default.fileExists(atPath: url.path))
+    #expect(await transport.keyCount == 1)
+}
+
+@Test func lowerRetentionRequiresConfirmationAndNeverRemovesSnippets() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("copysaver-limits-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.dev", transport: MemoryKeychain())
+    let service = DesktopVaultService(url: directory.appendingPathComponent("vault.sqlite"), keys: provider)
+    try await service.create()
+    let initial = try await service.unlock()
+    let old = Date().addingTimeInterval(-2 * 86_400)
+    let history = try VaultRecord(.history(HistoryItem(text: "Synthetic old", firstSeenAt: old, lastSeenAt: old)))
+    _ = try await service.save(history)
+    let settings = try HistoryPolicy.settings(in: initial).updating(retentionDays: 1)
+    await #expect(throws: HistoryFailure.confirmationRequired) { try await service.updateSettings(settings, confirmed: false) }
+    let before = try await service.save(history)
+    #expect(before.contains { $0.id == history.id })
+    let after = try await service.updateSettings(settings, confirmed: true)
+    #expect(!after.contains { $0.id == history.id })
 }

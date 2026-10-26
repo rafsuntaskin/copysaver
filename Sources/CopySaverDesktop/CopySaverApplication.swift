@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import CopySaverPlatform
 import CoreGraphics
 import SwiftUI
@@ -25,7 +26,7 @@ public enum CopySaverApplication {
     override var canBecomeMain: Bool { false }
 }
 
-@MainActor private final class ApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation {
+@MainActor private final class ApplicationDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation, NSMenuDelegate {
     private let model: DesktopModel
     private let clipboard: SystemClipboardOutput?
     private let monitor: ClipboardMonitor?
@@ -40,6 +41,8 @@ public enum CopySaverApplication {
     private var cleanupTimer: Timer?
     private var recorder: Any?
     private let scheme: String
+    private var hasLaunched = false
+    private var pendingDestination: AppDestination?
 
     init(preview: Bool) {
         let identifier = Bundle.main.bundleIdentifier
@@ -73,6 +76,7 @@ public enum CopySaverApplication {
         model.onClearShortcut = { [weak self] in self?.clearShortcut() }
         model.onCaptureBoundary = { [weak self] in self?.monitor?.suspend() }
         model.onRequestClipboardAccess = { [weak self] in self?.monitor?.requestAccess() }
+        model.onConfirmDiscardDraft = { [weak self] in self?.confirmDiscardDraft() ?? false }
         shortcut.onPress = { [weak self] in self?.toggleFocus() }
         installMenu()
         installLifecycleObservers()
@@ -81,7 +85,11 @@ public enum CopySaverApplication {
             if let saved, saved.isValid { setShortcut(saved) } else { setShortcut(.standard) }
         } else { model.shortcutDescription = "Not set" }
         model.start()
-        openLibrary()
+        hasLaunched = true
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        let loginLaunch = event?.eventID == kAEOpenApplication && event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+        if let destination = pendingDestination { route(destination); pendingDestination = nil }
+        else if !loginLaunch { openLibrary() }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { openLibrary(); return true }
@@ -89,12 +97,18 @@ public enum CopySaverApplication {
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             guard let destination = AppDestination(url: url, scheme: scheme) else { continue }
-            model.section = destination == .snippets ? .snippets : .history
-            if destination == .focus { showFocus() } else { openLibrary() }
+            if hasLaunched { route(destination) } else { pendingDestination = destination }
         }
     }
 
+    private func route(_ destination: AppDestination) {
+        model.libraryQuery = ""; model.focusQuery = ""
+        model.section = destination == .snippets ? .snippets : .history
+        if destination == .focus { showFocus() } else { openLibrary() }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if model.hasDirtyDraft && !confirmDiscardDraft() { return .terminateCancel }
         model.lock()
         shortcut.stop()
         cancelRecording()
@@ -120,6 +134,7 @@ public enum CopySaverApplication {
     }
 
     @objc private func openLibrary() {
+        model.isFocusPresented = false
         panel?.orderOut(nil)
         if library == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 680), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
@@ -127,7 +142,7 @@ public enum CopySaverApplication {
             window.titleVisibility = .hidden
             window.titlebarAppearsTransparent = true
             window.isReleasedWhenClosed = false
-            window.minSize = NSSize(width: 840, height: 540)
+            window.minSize = NSSize(width: 480, height: 540)
             window.delegate = self
             window.contentView = NSHostingView(rootView: AppearanceRoot(content: LibraryView(model: model)))
             window.center()
@@ -143,6 +158,8 @@ public enum CopySaverApplication {
 
     private func showFocus() {
         cancelRecording()
+        model.concealSensitiveContent()
+        model.isFocusPresented = true
         previousApp = NSWorkspace.shared.frontmostApplication
         if model.section != .snippets { model.section = .history }
         model.focusQuery = ""
@@ -176,6 +193,7 @@ public enum CopySaverApplication {
         panel?.orderOut(nil)
         model.focusQuery = ""
         model.concealSensitiveContent()
+        model.isFocusPresented = false
         if let previousApp, previousApp.processIdentifier != ProcessInfo.processInfo.processIdentifier {
             previousApp.activate()
         }
@@ -187,14 +205,41 @@ public enum CopySaverApplication {
         panel?.orderOut(nil)
         model.focusQuery = ""
         model.concealSensitiveContent()
+        model.isFocusPresented = false
     }
 
     @objc private func lockVault() { model.lock() }
     @objc private func openSettings() { model.section = .settings; openLibrary() }
     @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func toggleHistory() { model.setCaptureEnabled(!(model.settings?.captureEnabled ?? false)) }
+    @objc private func togglePause() { model.toggleCapturePause() }
+
+    private func confirmDiscardDraft() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Discard this unsaved snippet?"
+        alert.informativeText = "Your draft has not been saved."
+        alert.addButton(withTitle: "Keep editing"); alert.addButton(withTitle: "Discard")
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else { return }
+        menu.removeAllItems()
+        let status = NSMenuItem(title: model.captureStatus, action: nil, keyEquivalent: "")
+        menu.addItem(status); menu.addItem(.separator())
+        for (title, action) in [("Open Focus Mode", #selector(toggleFocus)), ("Open Library", #selector(openLibrary)),
+                                (model.settings?.captureEnabled == true ? "Disable History" : "Enable History", #selector(toggleHistory)),
+                                (model.settings?.manuallyPaused == true ? "Resume Capture" : "Pause Capture", #selector(togglePause)),
+                                ("Settings…", #selector(openSettings)), ("Lock Vault", #selector(lockVault)), ("Quit CopySaver", #selector(quit))] {
+            let entry = NSMenuItem(title: title, action: action, keyEquivalent: title == "Quit CopySaver" ? "q" : "")
+            entry.target = self; menu.addItem(entry)
+        }
+    }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(lockVault) || menuItem.action == #selector(openSettings) { return model.phase == .unlocked }
+        if menuItem.action == #selector(toggleHistory) { return model.phase == .unlocked && !model.isBusy && !model.isPreview }
+        if menuItem.action == #selector(togglePause) { return model.phase == .unlocked && model.settings?.captureEnabled == true && !model.isBusy && !model.isPreview }
         return true
     }
 
@@ -233,6 +278,7 @@ public enum CopySaverApplication {
             menu.addItem(entry)
         }
         item.menu = menu
+        menu.delegate = self
         statusItem = item
     }
 

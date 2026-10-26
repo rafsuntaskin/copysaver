@@ -5,6 +5,34 @@ struct LibraryView: View {
     @Bindable var model: DesktopModel
 
     var body: some View {
+        GeometryReader { geometry in
+            if geometry.size.width < 850 {
+                VStack(spacing: 0) {
+                    HStack {
+                        if model.compactShowDetail && model.section != .settings {
+                            Button { model.compactShowDetail = false; model.concealSensitiveContent() } label: { Label("Back", systemImage: "chevron.left") }
+                        }
+                        Picker("Library", selection: $model.section) {
+                            ForEach(LibrarySection.allCases) { Text($0.rawValue).tag($0) }
+                        }.labelsHidden().accessibilityLabel("Library section")
+                        Button { model.onOpenFocus?() } label: { Image(systemName: "magnifyingglass") }.help("Open Focus mode")
+                        Button { model.lock() } label: { Image(systemName: "lock") }.help("Lock vault")
+                    }.padding(.horizontal, 18).padding(.top, 40).padding(.bottom, 12)
+                    Divider()
+                    if model.phase != .unlocked { VaultGateView(model: model) }
+                    else if model.section == .settings { SettingsView(model: model) }
+                    else if model.compactShowDetail { detail }
+                    else { itemList }
+                }
+            } else { wideLayout }
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+        .frame(minWidth: 480, minHeight: 540)
+        .onChange(of: model.libraryQuery) { _, query in model.ensureSelection(query: query) }
+        .onChange(of: model.section) { _, _ in model.ensureSelection(query: model.libraryQuery); model.compactShowDetail = false }
+    }
+
+    private var wideLayout: some View {
         HStack(spacing: 0) {
             sidebar.frame(width: 205)
             Divider()
@@ -20,10 +48,6 @@ struct LibraryView: View {
                 VaultGateView(model: model).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
-        .frame(minWidth: 840, minHeight: 540)
-        .onChange(of: model.libraryQuery) { _, query in model.ensureSelection(query: query) }
-        .onChange(of: model.section) { _, _ in model.ensureSelection(query: model.libraryQuery) }
     }
 
     private var sidebar: some View {
@@ -32,7 +56,7 @@ struct LibraryView: View {
                 .font(.system(size: 17, weight: .semibold)).padding(.bottom, 26).padding(.horizontal, 12)
             ForEach([LibrarySection.history, .snippets, .pinned]) { section in
                 Button {
-                    model.section = section
+                    model.navigate(to: section)
                 } label: {
                     Label(section.rawValue, systemImage: section.symbol)
                         .font(.system(size: 14)).frame(maxWidth: .infinity, alignment: .leading)
@@ -67,8 +91,9 @@ struct LibraryView: View {
                     .font(.system(size: 12)).textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Search \(model.section.rawValue)")
                 if model.section == .snippets {
-                    Button { model.beginSnippet() } label: { Image(systemName: "plus") }
-                        .help("New snippet").disabled(model.isPreview || model.isBusy)
+                    Menu {
+                        ForEach(SnippetTemplate.allCases) { template in Button("New \(template.rawValue.lowercased()) snippet") { model.beginSnippet(template: template) } }
+                    } label: { Image(systemName: "plus") }.help("New snippet").disabled(model.isPreview || model.isBusy)
                 }
             }.padding(.horizontal, 16).padding(.top, 48).padding(.bottom, 20)
             Divider()
@@ -79,10 +104,10 @@ struct LibraryView: View {
                             .foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.top, 14)
                     }
                     ForEach(model.items(query: model.libraryQuery)) { record in
-                        RecordRow(record: record, selected: record.id == model.selectedID) { model.selectedID = record.id }
+                        RecordRow(record: record, selected: record.id == model.selectedID) { model.selectRecord(record.id) }
                             .contextMenu {
-                                Button("Copy") { model.selectedID = record.id; model.copySelection() }.disabled(model.isPreview)
-                                Button("Delete", role: .destructive) { model.selectedID = record.id; model.deleteSelection() }.disabled(model.isPreview || model.isBusy)
+                                Button("Copy") { model.selectRecord(record.id); if model.selectedID == record.id { model.copySelection() } }.disabled(model.isPreview)
+                                Button("Delete", role: .destructive) { model.selectRecord(record.id); if model.selectedID == record.id { model.deleteSelection() } }.disabled(model.isPreview || model.isBusy)
                             }
                     }
                 }.padding(8)
@@ -108,9 +133,17 @@ struct LibraryView: View {
                     if record.isSensitive { Image(systemName: "lock").foregroundStyle(.secondary).accessibilityLabel("Sensitive snippet") }
                 }.padding(.top, 58).padding(.bottom, 28)
                 if case .snippet = record.payload { Text(verbatim: record.displayTitle).font(.title2.weight(.semibold)).padding(.bottom, 20) }
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if record.isSensitive {
+                HStack {
+                    if case .history(let item) = record.payload {
+                        Button(item.isPinned ? "Unpin" : "Pin") { model.toggleSelectedPin() }
+                        Button("Save as snippet") { model.promoteSelection() }
+                    } else { Button("Edit snippet") { model.editSelection() } }
+                    Spacer()
+                    Button("Delete", role: .destructive) { model.deleteSelection() }
+                }.font(.system(size: 12)).padding(.bottom, 18).disabled(model.isPreview || model.isBusy)
+                if record.isSensitive {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
                             Text(verbatim: model.detailText(for: record)).font(.system(size: 14, design: .monospaced))
                                 .accessibilityLabel(model.revealedID == record.id ? record.content : "Sensitive content, concealed")
                             if model.revealedID == record.id {
@@ -118,13 +151,20 @@ struct LibraryView: View {
                             } else {
                                 Button("Reveal for 30 seconds") { model.revealSelection() }.disabled(model.isPreview || model.isBusy)
                             }
-                        } else {
-                            Text(verbatim: record.content).font(.system(size: 14, design: .monospaced)).textSelection(.enabled)
-                        }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else {
+                    VaultTextEditor(text: .constant(record.content), editable: false, accessibilityName: "Saved text") { text, _ in
+                        model.copySelection(selectedText: text)
+                    }
                 }
                 Spacer(minLength: 24)
                 Label(record.subtitle, systemImage: record.symbol).font(.system(size: 12)).foregroundStyle(.secondary).padding(.bottom, 16)
+                if case .history(let value) = record.payload {
+                    Text("Captured \(value.firstSeenAt.formatted(date: .abbreviated, time: .shortened)) · seen \(value.repeatCount) \(value.repeatCount == 1 ? "time" : "times")")
+                        .font(.caption).foregroundStyle(.secondary).padding(.bottom, 6)
+                    if let date = value.lastCopiedAt { Text("Last copied \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary).padding(.bottom, 6) }
+                }
                 FeedbackView(model: model)
                 Divider()
                 HStack {
@@ -177,6 +217,7 @@ struct RecordRow: View {
 
 struct VaultGateView: View {
     @Bindable var model: DesktopModel
+    @State private var confirmReset = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -209,7 +250,14 @@ struct VaultGateView: View {
                 Button("Retry") { model.start() }.buttonStyle(.bordered)
             }
             FeedbackView(model: model)
+            if !model.isPreview && !model.isBusy && (model.phase == .locked || model.phase == .failed) {
+                Button("Reset vault…", role: .destructive) { confirmReset = true }.font(.caption)
+            }
         }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
+        .confirmationDialog("Permanently delete this vault and its key?", isPresented: $confirmReset, titleVisibility: .visible) {
+            Button("Delete history, snippets, and key", role: .destructive) { model.resetVault() }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("All saved text will be lost. There is no recovery or portable backup. Authentication is required when the key is available; a missing key still allows this explicitly confirmed reset.") }
     }
 }
 
@@ -229,10 +277,18 @@ private struct SnippetEditorView: View {
     @Bindable var model: DesktopModel
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("New snippet").font(.title2.weight(.semibold)).padding(.top, 54)
+            Text(model.editingSnippet == nil ? "New snippet" : "Edit snippet").font(.title2.weight(.semibold)).padding(.top, 54)
+            if model.draftNeedsAuthentication {
+                Text("Private draft concealed").foregroundStyle(.secondary)
+                Button("Authenticate to continue editing") { model.resumeSensitiveDraft() }.disabled(model.isBusy)
+                Button("Discard draft", role: .destructive) { model.discardDraft() }.disabled(model.isBusy)
+                FeedbackView(model: model)
+                Spacer()
+            } else {
             LabeledContent("Name") { TextField("For example, Home address", text: $model.draftName).textFieldStyle(.roundedBorder) }
+            LabeledContent("Category") { TextField("General, Address, Card…", text: $model.draftCategory).textFieldStyle(.roundedBorder) }
             Text("Text").font(.system(size: 13, weight: .medium))
-            TextEditor(text: $model.draftBody).font(.system(size: 13, design: .monospaced))
+            VaultTextEditor(text: $model.draftBody) { text, completion in model.copyDraftText(text, onSuccess: completion) }.disabled(model.isBusy)
                 .accessibilityLabel("Snippet text").border(Color(nsColor: .separatorColor), width: 1)
             Toggle("Sensitive: authenticate before reveal or copy", isOn: $model.draftSensitive).font(.system(size: 12))
             FeedbackView(model: model)
@@ -241,6 +297,7 @@ private struct SnippetEditorView: View {
                 Spacer()
                 Button("Save snippet") { model.saveDraft() }.buttonStyle(.borderedProminent).disabled(model.isBusy)
             }.padding(.bottom, 24)
+            }
         }.padding(.horizontal, 24)
     }
 }

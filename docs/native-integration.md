@@ -9,7 +9,7 @@ The `feat/native-app` branch is stacked on vault foundation `06359fe`. It adds a
 - Clipboard output: current-host-only writes, source and opaque ownership markers, concealed marker for sensitive content, accurate failure feedback, and 30-second owned-sensitive expiry. Cleanup checks both change count and owner marker and never restores an older clipboard buffer.
 - App project: shared Xcode scheme, Debug/Release identity separation, app sandbox, and hardened runtime. SwiftPM builds the same desktop implementation through the working standalone tools.
 
-This is partial implementation of M1-08/M1-09/M1-11/M1-12, M2-05–M2-10, and M3-01/M3-03–M3-07. These checklist tasks include additional behavior or native verification and remain unchecked. Clipboard monitoring, transactional retention, encrypted history preferences, explicit permission guidance, and pause/resume are now implemented. Template/edit flow, history promotion, widget target, and release pipeline remain pending.
+This is partial implementation of M1-08/M1-09/M1-11/M1-12, M2-05–M2-10, and M3-01/M3-03–M3-07. These checklist tasks include additional behavior or native verification and remain unchecked. Clipboard monitoring, transactional retention, encrypted history preferences, explicit permission guidance, and pause/resume are now implemented. Template/edit flow, history promotion, pinning, copy timestamps, login preferences, compact navigation, and confirmed reset are now implemented. Widget target and release pipeline remain pending.
 
 ## Reproducible checks
 
@@ -47,3 +47,15 @@ Only appearance and shortcut preferences use UserDefaults. The app sandbox entit
 On macOS 15.4+, polling requires `NSPasteboard.accessBehavior == .alwaysAllow`; Default/Ask shows a permission-needed state and never repeatedly prompts. The explicit Request access action discards its read and rebaselines; the user chooses Always Allow in System Settings for background capture. Older systems use ordinary pasteboard APIs and still require explicit capture enablement. APIs/availability were checked against the installed AppKit SDK. Marker policy follows [NSPasteboard.org](https://nspasteboard.org/). Source hints and application attribution are untrusted and cannot guarantee exclusion of every sensitive copy.
 
 Validation: 67-test full suite and an additional transactional Unicode-edit regression passed, including 12 concurrent identical captures against production CryptoKit/SQLite and pause/reopen/clear-history preservation. Native permissions, near-limit performance, and crash/OS lifecycle acceptance are still separate gates.
+
+## Snippet and library completion update
+
+The native source now supports category-aware create/edit/delete, templates, independent history promotion, pinning, copy timestamps, and 480-point compact navigation. Sensitive editing and sensitivity changes authenticate freshly; deactivation conceals private draft fields until fresh authentication. A dedicated AppKit body editor routes Copy/Cut through ownership/authentication policy, blocks dragging and Services export, disables automatic text analysis, and owns/clears its own undo history. Sensitive details remain unselectable while masked/revealed; ordinary selectable details also use owned clipboard writes. Native keyboard/VoiceOver verification remains open.
+
+Reset is explicitly confirmed, locks/purges presentation first, authenticates when a key exists, closes/checkpoints SQLite, and removes only the owned vault/sidecar paths and key. Missing-key reset is supported. A structurally unreadable vault that cannot supply its identity fails safely for manual diagnosis; no unrelated paths or guessed Keychain entries are deleted. Reset does not promise secure erasure of backups/snapshots.
+
+Login registration uses `SMAppService.mainApp` only on explicit toggle; login launch is detected from the documented [launch Apple event](https://developer.apple.com/documentation/coreservices/apple_events/1556410-launch_apple_event_constants) and stays locked in the menu bar. Actual registration/login and signed OS authentication still require native integration evidence.
+
+Validation: 77-test suite plus cancelled draft-copy regression passed (78 total tests). Includes sensitivity changes, private drafts, exact Unicode, copy timestamps, promotion, card template defaults, pinned/snippet capacity, confirmed limits, cancelled reset, and missing-key recovery.
+
+Native preview follow-up: the Mac was available again. Verified library search updates row/detail selection, sensitive sample body is absent from the AX tree, 613-point compact resize/back navigation, Focus search autofocus/filtering, and Escape dismissal. The critique pass removed an unnecessary text-view scrollbar and corrected singular observation wording. Full VoiceOver, real auth/copy, login, Spaces, and minimum-OS checks remain pending.

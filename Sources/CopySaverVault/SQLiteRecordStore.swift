@@ -96,6 +96,13 @@ final class SQLiteRecordStore {
 
     deinit { sqlite3_close(database) }
 
+    func close() throws {
+        guard let database else { return }
+        try checkpoint()
+        guard sqlite3_close(database) == SQLITE_OK else { throw VaultError.storageFailure }
+        self.database = nil
+    }
+
     func allRecords() throws -> [EncryptedRecord] {
         try statement("SELECT id, version, payload FROM records ORDER BY id") { query in
             var records: [EncryptedRecord] = []
