@@ -13,10 +13,12 @@ let package = Package(
         .executable(name: "CopySaverDev", targets: ["CopySaverDev"]),
         .executable(name: "CopySaverWidgetCheck", targets: ["CopySaverWidgetCheck"]),
         .executable(name: "CopySaverCrashProbe", targets: ["CopySaverCrashProbe"]),
+        .executable(name: "CopySaverKeychainProbe", targets: ["CopySaverKeychainProbe"]),
     ],
     targets: [
         .target(name: "CopySaverDomain"),
         .executableTarget(name: "CopySaverCrashProbe", dependencies: ["CopySaverDomain", "CopySaverVault"], path: "TestsSupport/CrashProbe"),
+        .executableTarget(name: "CopySaverKeychainProbe", dependencies: ["CopySaverPlatform"], path: "TestsSupport/KeychainProbe", exclude: ["Info.plist", "CopySaverKeychainProbe.entitlements"]),
         .target(name: "CopySaverWidgets"),
         .executableTarget(name: "CopySaverWidgetCheck", dependencies: ["CopySaverWidgets"], path: "Widget", exclude: ["Info.plist", "CopySaverWidget.entitlements"]),
         .testTarget(name: "CopySaverWidgetsTests", dependencies: ["CopySaverWidgets", "CopySaverPlatform"]),

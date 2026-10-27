@@ -16,9 +16,10 @@ assert all(re.fullmatch(r"[0-9A-F]{24}", key) for key in objects)
 references = set(re.findall(r"\b[0-9A-F]{24}\b", project.read_text()))
 assert references <= set(objects), f"Unresolved project references: {references - set(objects)}"
 assert objects[data["rootObject"]]["isa"] == "PBXProject"
-for source in ["App/CopySaverMain.swift", "Widget/CopySaverWidgetMain.swift"]:
+for source in ["App/CopySaverMain.swift", "Widget/CopySaverWidgetMain.swift", "TestsSupport/KeychainProbe/KeychainBoundaryProbeMain.swift"]:
     assert (root / source).is_file(), source
-for folder, entitlement in [("App", "CopySaver.entitlements"), ("Widget", "CopySaverWidget.entitlements")]:
+for folder, entitlement in [("App", "CopySaver.entitlements"), ("Widget", "CopySaverWidget.entitlements"),
+                            ("TestsSupport/KeychainProbe", "CopySaverKeychainProbe.entitlements")]:
     assert plistlib.loads((root / folder / entitlement).read_bytes()) == {"com.apple.security.app-sandbox": True}
     plistlib.loads((root / folder / "Info.plist").read_bytes())
 
@@ -35,8 +36,35 @@ for target_id in [app_id, widget_id]:
 assert any(objects[dep]["target"] == widget_id for dep in objects[app_id]["dependencies"])
 phases = [objects[p] for p in objects[app_id]["buildPhases"]]
 assert any(p["isa"] == "PBXCopyFilesBuildPhase" and p["dstSubfolderSpec"] == "13" for p in phases)
-scheme = ET.parse(root / "CopySaver.xcodeproj/xcshareddata/xcschemes/CopySaver.xcscheme")
-assert all(node.attrib["BlueprintIdentifier"] in objects for node in scheme.findall(".//BuildableReference"))
+probe_id = "E10000000000000000000001"
+probe = objects[probe_id]
+for configuration in objects[probe["buildConfigurationList"]]["buildConfigurations"]:
+    settings = objects[configuration]["buildSettings"]
+    assert settings["PRODUCT_BUNDLE_IDENTIFIER"].endswith(".dev.BoundaryProbe")
+    assert all(settings[key] == "YES" for key in ["ENABLE_APP_SANDBOX", "ENABLE_HARDENED_RUNTIME", "SKIP_INSTALL"])
+product_targets = set()
+pending = [app_id, widget_id]
+while pending:
+    target_id = pending.pop()
+    if target_id in product_targets:
+        continue
+    product_targets.add(target_id)
+    pending.extend(objects[dep]["target"] for dep in objects[target_id]["dependencies"])
+assert probe_id not in product_targets, "Integration probe must not enter the product dependency graph"
+for target_id in product_targets:
+    for phase_id in objects[target_id]["buildPhases"]:
+        for build_file in objects[phase_id]["files"]:
+            assert objects[build_file].get("fileRef") not in {
+                "B10000000000000000000001", "B10000000000000000000004"
+            }, "Integration probe must never be compiled into or embedded in the product"
+for scheme_path in (root / "CopySaver.xcodeproj/xcshareddata/xcschemes").glob("*.xcscheme"):
+    scheme = ET.parse(scheme_path)
+    assert all(node.attrib["BlueprintIdentifier"] in objects for node in scheme.findall(".//BuildableReference"))
+    if scheme_path.stem == "CopySaver":
+        assert all(node.attrib["BlueprintIdentifier"] != probe_id for node in scheme.findall(".//BuildableReference"))
+    elif scheme_path.stem == "CopySaverKeychainProbe":
+        assert all(node.attrib["BlueprintIdentifier"] == probe_id for node in scheme.findall(".//BuildableReference"))
+        assert all(entry.attrib["buildForArchiving"] == "NO" for entry in scheme.findall(".//BuildActionEntry"))
 
 package = (root / "Package.swift").read_text()
 assert '.target(name: "CopySaverWidgets")' in package, "Widget must have no app/vault dependencies"

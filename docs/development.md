@@ -100,4 +100,6 @@ Native visual inspection and remaining platform gates are recorded in [native-in
 
 The committed [CI workflow](../.github/workflows/ci.yml) runs source verification and an unsigned app/embedded-widget Xcode build on Apple silicon and Intel macOS runners. It has read-only repository permissions and a pinned checkout action. It has not run on a hosted repository yet. See [release validation](release-checklist.md) for the explicit archive/notarization workflow. Source checks, unsigned builds, and configuration are not proof of signed platform behavior.
 
+`CopySaverKeychainProbe` is a separately signed manual integration fixture, never embedded in CopySaver or its widget. `make verify` builds it and checks its unsigned admission refusals without Keychain access. Follow the [signed Keychain procedure](keychain-validation.md) only with a confirmed synthetic development vault and real signing identity. Actual helper denial and user-presence enforcement remain pending.
+
 See [performance evidence](performance.md) for opt-in synthetic benchmarks. The approved support-package repair resolved Xcode loading; `security find-identity -v -p codesigning` still finds zero valid identities. Signing configuration and native security validation remain pending.
