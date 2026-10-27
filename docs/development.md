@@ -2,7 +2,7 @@
 
 ## Current repository state
 
-The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 86 Swift Testing checks (two benchmarks are opt-in), a native development executable, and no external package dependencies. An Xcode app project is committed but has not been built through Xcode. The Xcode widget target and CI/release scripts are present; signed target builds, gallery discovery, hosted CI execution, and release binaries remain pending. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
+The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 86 Swift Testing checks (two benchmarks are opt-in), a native development executable, and no external package dependencies. The Xcode app and embedded widget build successfully in Debug and Release for Apple silicon and Intel with signing disabled. Signed target builds, gallery discovery, hosted CI execution, and release binaries remain pending. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
 
 ## Available standalone tools
 
@@ -44,11 +44,11 @@ For direct compiler troubleshooting, use the SDK at `/Library/Developer/CommandL
 
 ## Full Xcode integration
 
-The initial environment has Xcode 27.1 installed and selected at `/Applications/Xcode.app/Contents/Developer`. At the last check, SDK loading and Swift discovery through that Xcode failed with a CoreDevice `_XPCTypeBool` library error. An installed developer-support package still reported version 16.1.
+Xcode 27.1 (27A9275) is installed and selected at `/Applications/Xcode.app/Contents/Developer`. The previous CoreDevice `_XPCTypeBool` loader failure came from stale version 16.1 developer-support resources.
 
-Xcode passed Gatekeeper assessment, and its bundled replacement support package passed Apple signature verification outside the restricted execution sandbox. No support package was installed by this project. A system-wide repair was blocked pending explicit approval and is not a prerequisite for starting independently testable core work.
+On October 26, 2026, after explicit user approval and Apple signature verification, Apple Installer successfully installed the bundled `XcodeSystemResources.pkg`. The installed receipt now reports `27.1.0.0.1790739719`. Xcode version/SDK discovery and Swift 6.4 discovery pass. No global developer-directory change was made. This repair does not authorize other system packages or security changes.
 
-Once Xcode is working, validate these read-only checks and record the results in the spec:
+Read-only environment checks:
 
 ```sh
 env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -version
@@ -57,7 +57,7 @@ env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -showsdk
 env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun swift --version
 ```
 
-The signed app build, actual Keychain enforcement, widget packaging/discovery, Xcode UI testing, and release validation stay unchecked until their own tests run. The native Keychain adapter exists and has no plaintext fallback; its query policy is unit-tested, while OS-enforced identity and authentication remain separate gates. See [native integration evidence](native-integration.md).
+Version, SDK and Swift checks pass. `-checkFirstLaunchStatus` still exits 69 without diagnostics; no additional first-launch packages were installed. The macOS app/widget build itself succeeds. Actual signed Keychain enforcement, widget discovery, Xcode UI testing, and release validation stay unchecked until their own tests run. The native Keychain adapter has no plaintext fallback; its query policy is unit-tested, while OS-enforced identity and authentication remain separate gates. See [native integration evidence](native-integration.md).
 
 ## Native development app
 
@@ -70,9 +70,18 @@ make preview
 
 Normal launch starts locked (or offers setup for a new vault). It attempts real data-protection Keychain access and may report a missing-entitlement error with ad-hoc signing. Do not weaken entitlements or authentication to bypass this. Use synthetic data only until signed integration passes. Capture starts off; enable it in History settings after unlocking. On systems with clipboard permission controls, automatic capture requires Always Allow.
 
-`CopySaver.xcodeproj` and its shared `CopySaver` scheme reference the local Swift package. Once Xcode works, open the project, select your own development team, build the Debug scheme, and run the M1-08–M1-14 scenarios. This project configuration is structurally checked, not yet verified by `xcodebuild`; no passing Xcode command is claimed. Do not invent a team ID or add shared Keychain groups.
+`CopySaver.xcodeproj` and its shared `CopySaver` scheme reference the local Swift package. The unsigned Debug app and embedded widget build successfully for arm64 and x86_64 with:
 
-Debug uses provisional bundle ID `org.copysaver.CopySaver.dev` and scheme `copysaver-dev`; Release uses `org.copysaver.CopySaver` and `copysaver`. Vault paths and Keychain service names derive from the active bundle identity. These identifiers require ownership confirmation before distribution. The provisional app has no network entitlement, widget extension, or shared container.
+```sh
+env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -project CopySaver.xcodeproj -scheme CopySaver -configuration Debug \
+  -destination 'generic/platform=macOS' -derivedDataPath .build/xcode-verification \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+For authenticated native testing, open the project, select your own development team, build the Debug scheme, and run the M1-08–M1-14 scenarios. Do not invent a team ID or add shared Keychain groups. An unsigned build does not establish runtime sandbox, hardened-runtime, or Keychain enforcement.
+
+Debug uses provisional bundle ID `org.copysaver.CopySaver.dev` and scheme `copysaver-dev`; Release uses `org.copysaver.CopySaver` and `copysaver`. Vault paths and Keychain service names derive from the active bundle identity. These identifiers require ownership confirmation before distribution. The Xcode app embeds a launcher widget with a separate identifier; neither target requests network access or a shared container.
 
 Native visual inspection and remaining platform gates are recorded in [native-integration.md](native-integration.md). The selected design context is in [PRODUCT.md](../PRODUCT.md) and [DESIGN.md](../DESIGN.md).
 
@@ -91,4 +100,4 @@ Native visual inspection and remaining platform gates are recorded in [native-in
 
 The committed [CI workflow](../.github/workflows/ci.yml) runs source verification and an unsigned app/embedded-widget Xcode build on Apple silicon and Intel macOS runners. It has read-only repository permissions and a pinned checkout action. It has not run on a hosted repository yet. See [release validation](release-checklist.md) for the explicit archive/notarization workflow. Source checks, unsigned builds, and configuration are not proof of signed platform behavior.
 
-See [performance evidence](performance.md) for opt-in synthetic benchmarks. On the current machine, Xcode still fails to load CoreDevice (`_XPCTypeBool`), the installed support package reports 16.1, and `security find-identity -v -p codesigning` found zero valid identities. Apple's bundled repair package passed signature verification. No package was installed, no developer directory was changed, and no signing identity was invented.
+See [performance evidence](performance.md) for opt-in synthetic benchmarks. The approved support-package repair resolved Xcode loading; `security find-identity -v -p codesigning` still finds zero valid identities. Signing configuration and native security validation remain pending.

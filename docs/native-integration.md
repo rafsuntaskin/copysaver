@@ -33,7 +33,7 @@ The preview is a separate DEBUG-only mode with fictional records and no vault/au
 
 ## Remaining platform gates
 
-- **M1-08–M1-10:** Build the Xcode project with a real development identity, verify device-only user-presence enforcement/password fallback, cancellation/lockout, and denial to a separately signed helper. Verify a clean install, reopen, and missing-key preservation. Local Xcode SDK loading remains blocked by the previously recorded CoreDevice support-package mismatch; no repair was performed.
+- **M1-08–M1-10:** Build the Xcode project with a real development identity, verify device-only user-presence enforcement/password fallback, cancellation/lockout, and denial to a separately signed helper. Verify a clean install, reopen, and missing-key preservation. The user-approved support-package repair resolved SDK loading; unsigned universal app/widget builds pass. A valid signing identity is still missing.
 - **M1-11:** Prove all lock paths on supported macOS versions. Public sleep/session/display-sleep observers and the encrypted 5/15/30-minute or system-lock-only idle preference are wired. The supplemental `com.apple.screenIsLocked` distributed notification name is undocumented and is not accepted as supported lock coverage. Resolve that dependency before completing the gate. Capture remains off by default; enabling it requires an explicit action while unlocked.
 - **M1-12/M2-08/M2-10/M3-06:** Verify real sandboxed pasteboard permissions, external-copy races, expiry across sleep/wake, global shortcut conflict/atomic replacement, focus restoration, active Space/full-screen behavior, and panel keyboard actions. Unit tests establish policy/state behavior only. Command/Control is required in a custom shortcut; plain typing, Option-only bindings, and Command-Space are rejected. Shortcut validation cannot detect every system or app reservation before registration.
 - **M1-13/M4:** Package/test the generic launcher widget, then audit discovery, URL routing on cold/locked launch, accessibility, performance, diagnostics, entitlements, and signed distribution.
@@ -81,3 +81,22 @@ Final native pass: the updated saved-text view rendered correctly in both light 
 Draft-navigation follow-up: returning to Snippets now restores the item being edited, cancelled row selection cannot continue a context Copy/Delete action, unchanged edits close without a false unsaved warning, dirty detection preserves exact Unicode bytes, and saving an edit keeps a newer copy timestamp. Targeted regressions and full Debug verification pass (84 functional tests plus two opt-in benchmark checks registered).
 
 The final draft fix also passes the full optimized Release run (84 applicable checks, including both benchmarks), and the updated local app bundle builds and verifies. The clean-source fixture is rechecked after this fix.
+
+## Approved Xcode repair and universal builds
+
+The user explicitly approved installing Apple's bundled `XcodeSystemResources.pkg`. Apple signature verification passed, Apple Installer reported success, and `pkgutil --pkg-info com.apple.pkg.XcodeSystemResources` now reports `27.1.0.0.1790739719`. Xcode 27.1 (27A9275) discovers its SDKs and Swift 6.4. This supersedes the earlier loader blocker recorded above. No global developer-directory change or additional support-package installation was performed. `xcodebuild -checkFirstLaunchStatus` still exits 69 without diagnostics; that does not prevent these macOS builds.
+
+Both commands pass with process-local `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`:
+
+```sh
+xcodebuild -project CopySaver.xcodeproj -scheme CopySaver -configuration Debug \
+  -destination 'generic/platform=macOS' -derivedDataPath .build/xcode-verification \
+  CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project CopySaver.xcodeproj -scheme CopySaver -configuration Release \
+  -destination 'generic/platform=macOS' -derivedDataPath .build/xcode-verification \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+`lipo -archs` confirms arm64 and x86_64 in each app and embedded extension. Processed plists confirm separate development/production app and widget identifiers, the matching `copysaver-dev`/`copysaver` navigation schemes, and the WidgetKit extension point. The Release executable excludes the synthetic preview body. Xcode emits a skipped App Intents metadata extraction warning because the app has no AppIntents dependency. Signing is disabled, so these builds do not establish hardened-runtime, sandbox, authentication or widget-gallery behavior.
+
+`env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer make verify` also passes using Swift 6.4: 86 checks registered, 84 functional checks passed and two opt-in benchmarks skipped. Static project/privacy/docs and shell checks pass. Zero valid code-signing identities remain installed; real Keychain and release gates stay open. Another native automation attempt stalled while switching to Finder, so the cross-app shortcut scenario remains unverified.

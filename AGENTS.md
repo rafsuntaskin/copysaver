@@ -26,7 +26,7 @@ Read [spec.md](spec.md), its delivery checklist and progress log, [CONTRIBUTING.
 - Sensitive reveal/copy/edit operations require fresh authentication. Masking includes VoiceOver and other accessibility output.
 - Do not overstate app exclusivity, secure deletion, memory erasure, secret detection, or recovery guarantees. Tests of unsigned builds do not establish signed Keychain access control.
 - Development builds use their own app identity and vault; never access a user's production vault for tests.
-- System-wide changes, installer packages, developer directory changes, and trust/security settings are not routine repository work. Do not silently perform them. The known Xcode support-package repair has not been authorized.
+- System-wide changes, installer packages, developer directory changes, and trust/security settings are not routine repository work. Do not silently perform them. The user explicitly approved the bundled Apple-signed XcodeSystemResources repair on October 26, 2026; installation completed and Xcode SDK loading works. This approval does not authorize other system changes.
 
 ## Git workflow
 
