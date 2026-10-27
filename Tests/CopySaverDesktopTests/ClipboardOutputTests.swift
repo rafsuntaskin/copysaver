@@ -9,6 +9,7 @@ import Testing
     var options: NSPasteboard.ContentsOptions = []
     var clears = 0
     var shouldFail = false
+    var onMarkerRead: (() -> Void)?
     func prepare(options: NSPasteboard.ContentsOptions) { self.options = options; item = nil; changeCount += 1 }
     func write(_ item: NSPasteboardItem) -> Bool {
         guard !shouldFail else { return false }
@@ -16,7 +17,15 @@ import Testing
         changeCount += 1
         return true
     }
-    func string(for type: NSPasteboard.PasteboardType) -> String? { item?.string(forType: type) }
+    func string(for type: NSPasteboard.PasteboardType) -> String? {
+        let value = item?.string(forType: type)
+        if type.rawValue == "org.copysaver.owner" {
+            let action = onMarkerRead
+            onMarkerRead = nil
+            action?()
+        }
+        return value
+    }
     func clear() { clears += 1; item = nil; changeCount += 1 }
 }
 
@@ -55,6 +64,18 @@ import Testing
     board.item?.setString("replacement owner", forType: .init("org.copysaver.owner"))
     output.clearOwnedSensitiveCopy()
     #expect(board.clears == 0)
+}
+
+@MainActor @Test func cleanupRechecksChangeCountAfterReadingOwnershipMarker() throws {
+    let board = MemoryPasteboard()
+    let output = SystemClipboardOutput(bundleIdentifier: "org.example.dev", pasteboard: board, schedulesTimer: false)
+    try output.copy("Synthetic sensitive", sensitive: true)
+    let external = NSPasteboardItem()
+    external.setString("Synthetic replacement during marker read", forType: .string)
+    board.onMarkerRead = { _ = board.write(external) }
+    output.clearOwnedSensitiveCopy()
+    #expect(board.clears == 0)
+    #expect(board.item?.string(forType: .string) == "Synthetic replacement during marker read")
 }
 
 @MainActor @Test func ordinaryCopiesAreNotConcealedOrAutomaticallyCleared() throws {

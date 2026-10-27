@@ -13,11 +13,11 @@ This is partial implementation of M1-08/M1-09/M1-11/M1-12, M2-05–M2-10, and M3
 
 ## Reproducible checks
 
-On October 26, 2026, using Command Line Tools Swift 6.3.3 on Apple silicon macOS 26.6.2:
+Checks recorded October 26–27, 2026, using Command Line Tools Swift 6.3.3 on Apple silicon macOS 26.6.2:
 
 | Check | Result and limit |
 | --- | --- |
-| `make build` then `make test` from a clean staged-source export | Current Debug verification discovers 86 checks (84 functional tests plus two opt-in benchmarks); functional tests pass. The optimized Release run passes all 84 applicable checks with benchmarks enabled; DEBUG-only preview tests are excluded. Includes real CryptoKit/SQLite, injected Keychain transport, in-memory pasteboard bridge, exact routes, preview isolation, fresh-auth requirements, and delayed authentication/lock/deactivation races. No real Keychain item, system clipboard, or user vault is used. |
+| `make build` then `make test` from a clean staged-source export | Current Debug verification discovers 89 checks (87 functional tests plus two opt-in benchmarks); functional tests pass. Earlier optimized benchmark evidence is recorded below; it does not include the three new clipboard regressions. Includes real CryptoKit/SQLite, injected Keychain transport, in-memory pasteboard bridge, exact routes, preview isolation, fresh-auth requirements, and delayed authentication/lock/deactivation races. No real Keychain item, system clipboard, or user vault is used. |
 | `make app` | Debug executable built, development bundle packaged, ad-hoc sandbox/hardened signature verified. This establishes local build/integrity only. |
 | `./scripts/swift.sh build -c release --product CopySaverDev` | Optimized executable built; sample fixture code is DEBUG-only. Release refuses `--ui-preview`; sample-string exclusion checked in the optimized executable. This is not an Xcode archive or notarized application. |
 | `plutil -lint` on project, Info.plist, entitlements | Passed. Parsed 22 project objects; checked object references, source paths, shared-scheme target, distinct identities/schemes, and minimal entitlements. This does not establish Xcode project buildability. |
@@ -108,3 +108,11 @@ xcodebuild -project CopySaver.xcodeproj -scheme CopySaver -configuration Release
 The fixture uses the production Keychain provider for its own authenticated control and the explicitly confirmed synthetic `.dev` target. It refuses unbundled/ad-hoc or mismatched identities before any Keychain call; only item-not-found is an expected target observation. Failed auth, missing entitlements, unexpected access or cleanup failure never pass. The [operator procedure](keychain-validation.md) requires owner authentication before and after, plus same-team/distinct-identifier entitlement audits, to exclude missing-key false positives.
 
 SwiftPM builds pass with Swift 6.3.3 and 6.4; the unsigned Xcode Debug helper contains arm64 and x86_64. Seven admission checks pass against both unbundled toolchain builds and the unsigned Xcode bundle without Keychain operations. Full Swift 6.4 `make verify` passes 84 functional checks and seven helper guard cases, with two opt-in benchmarks skipped. Actual signed probing/authentication remains unexecuted because there are zero valid signing identities. M1-10/SEC-05 stay unchecked.
+
+## Clipboard cleanup race and cross-layer verification
+
+`cleanupRechecksChangeCountAfterReadingOwnershipMarker` first failed: an injected external copy during the ownership-marker read was erased. The implementation now verifies the original change count again after that read, and the regression passes. This closes that observed interval; checking and clearing remain separate operations, so a later external write can still race clearing. Real pasteboard timing/sleep-wake review and SEC-08 remain pending.
+
+The [pipeline tests](../Tests/CopySaverDesktopTests/ClipboardPipelineTests.swift) connect the real monitor, model, desktop service, encryption, serialization, retention and SQLite persistence to an in-memory Keychain transport and an in-memory pasteboard. They verify exact Unicode/whitespace capture → encrypted commit → search → owned copy, duplicate refresh/copy metadata, no self-write feedback, pause across locked reopen, no old-content import after permission restoration, cancelled sensitive authentication, concealed copy/expiry, newer external content surviving lock, snippet reopen and DB/WAL/SHM body/title/category/source canaries. They never access a real vault, Keychain item or system clipboard.
+
+Targeted regression command passes three tests: `./scripts/swift.sh test --disable-xctest --filter 'cleanupRechecksChangeCountAfterReadingOwnershipMarker|historyPipeline|sensitiveSnippetPipeline'`. Full CLT Swift 6.3.3 `make verify` passes 87 functional tests, two opt-in benchmarks skipped, and seven probe admission checks. The Xcode Swift 6.4 universal unsigned Release app/widget build passes; `make app` refreshes and verifies the ad-hoc development bundle. These cross-layer checks advance M2-11/M3-06 evidence without passing native FUNC/SEC gates.

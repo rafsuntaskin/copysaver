@@ -80,7 +80,10 @@ public enum ClipboardFailure: Error { case writeFailed }
         timer = nil
         guard let owned = ownership else { return }
         ownership = nil
-        if pasteboard.changeCount == owned.count, pasteboard.string(for: ownerType) == owned.token {
+        // Another process can replace the board during the marker read. Recheck
+        // afterwards; NSPasteboard does not offer an atomic compare-and-clear.
+        if pasteboard.changeCount == owned.count, pasteboard.string(for: ownerType) == owned.token,
+           pasteboard.changeCount == owned.count {
             pasteboard.clear()
         }
     }
