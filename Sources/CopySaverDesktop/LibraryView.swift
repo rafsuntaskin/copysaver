@@ -106,8 +106,8 @@ struct LibraryView: View {
                     ForEach(model.items(query: model.libraryQuery)) { record in
                         RecordRow(record: record, selected: record.id == model.selectedID) { model.selectRecord(record.id) }
                             .contextMenu {
-                                Button("Copy") { model.selectRecord(record.id); if model.selectedID == record.id { model.copySelection() } }.disabled(model.isPreview)
-                                Button("Delete", role: .destructive) { model.selectRecord(record.id); if model.selectedID == record.id { model.deleteSelection() } }.disabled(model.isPreview || model.isBusy)
+                                Button("Copy") { if model.selectRecord(record.id) { model.copySelection() } }.disabled(model.isPreview)
+                                Button("Delete", role: .destructive) { if model.selectRecord(record.id) { model.deleteSelection() } }.disabled(model.isPreview || model.isBusy)
                             }
                     }
                 }.padding(8)

@@ -88,15 +88,24 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         guard phase == .unlocked else { return nil }
         return items(query: isFocusPresented ? focusQuery : libraryQuery).first { $0.id == selectedID }
     }
-    public var hasDirtyDraft: Bool { isCreatingSnippet && (!draftName.isEmpty || !draftBody.isEmpty) }
+    public var hasDirtyDraft: Bool {
+        guard isCreatingSnippet else { return false }
+        guard let original = editingSnippet else {
+            return !draftName.isEmpty || !draftBody.isEmpty || draftSensitive ||
+                (!draftCategory.isEmpty && draftCategory != SnippetTemplate.general.rawValue)
+        }
+        return !draftName.utf8.elementsEqual(original.name.utf8) || !draftBody.utf8.elementsEqual(original.body.utf8) ||
+            !draftCategory.utf8.elementsEqual((original.category ?? "").utf8) || draftSensitive != original.isSensitive
+    }
     public var draftNeedsAuthentication: Bool { isCreatingSnippet && (draftSensitive || editingSnippet?.isSensitive == true) && !draftAuthorized }
     public func navigate(to section: LibrarySection) { self.section = section; libraryQuery = ""; compactShowDetail = false }
-    public func selectRecord(_ id: UUID) {
-        if hasDirtyDraft && selectedID != id {
-            guard onConfirmDiscardDraft?() == true else { return }
+    @discardableResult public func selectRecord(_ id: UUID) -> Bool {
+        if isCreatingSnippet {
+            if hasDirtyDraft && onConfirmDiscardDraft?() != true { return false }
             discardDraft()
         }
         selectedID = id; compactShowDetail = true
+        return true
     }
 
     public var canCopy: Bool { phase == .unlocked && selectedRecord != nil && !isBusy && !isPreview && !reviewingCleanup }
@@ -183,6 +192,8 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
 
     public func ensureSelection(query: String) {
         let visible = items(query: query)
+        if section == .snippets, isCreatingSnippet, let original = editingSnippet,
+           visible.contains(where: { $0.id == original.id }) { selectedID = original.id; return }
         if !visible.contains(where: { $0.id == selectedID }) { selectedID = visible.first?.id }
     }
 
@@ -324,9 +335,13 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         do {
             let now = Date()
             let original = editingSnippet
+            let latestCopy: Date?
+            if let original, case .snippet(let latest) = records.first(where: { $0.id == original.id })?.payload {
+                latestCopy = latest.lastCopiedAt
+            } else { latestCopy = original?.lastCopiedAt }
             let snippet = try Snippet(id: original?.id ?? UUID(), name: draftName, body: draftBody, category: draftCategory,
                                       isSensitive: draftSensitive, createdAt: original?.createdAt ?? now,
-                                      updatedAt: max(original?.updatedAt ?? now, now), lastCopiedAt: original?.lastCopiedAt)
+                                      updatedAt: max(original?.updatedAt ?? now, now), lastCopiedAt: latestCopy)
             let record = try VaultRecord(.snippet(snippet))
             let presentation = sensitivePresentation
             run(fallback: .unlocked, work: { [weak self] in

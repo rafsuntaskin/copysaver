@@ -2,7 +2,7 @@
 
 ## Current repository state
 
-The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 85 Swift Testing checks (two benchmarks are opt-in), a native development executable, and no external package dependencies. An Xcode app project is committed but has not been built through Xcode. The Xcode widget target and CI/release scripts are present; signed target builds, gallery discovery, hosted CI execution, and release binaries remain pending. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
+The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 86 Swift Testing checks (two benchmarks are opt-in), a native development executable, and no external package dependencies. An Xcode app project is committed but has not been built through Xcode. The Xcode widget target and CI/release scripts are present; signed target builds, gallery discovery, hosted CI execution, and release binaries remain pending. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
 
 ## Available standalone tools
 

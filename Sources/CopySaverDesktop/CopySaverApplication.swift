@@ -130,15 +130,15 @@ public enum CopySaverApplication {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         model.concealSensitiveContent()
-        if model.isCreatingSnippet && (!model.draftBody.isEmpty || !model.draftName.isEmpty) {
+        if model.hasDirtyDraft {
             let alert = NSAlert()
             alert.messageText = "Discard this unsaved snippet?"
             alert.informativeText = "Your draft has not been saved."
             alert.addButton(withTitle: "Keep editing")
             alert.addButton(withTitle: "Discard")
             if alert.runModal() == .alertFirstButtonReturn { return false }
-            model.discardDraft()
         }
+        model.discardDraft()
         return true
     }
 

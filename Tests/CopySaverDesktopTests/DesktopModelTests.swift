@@ -453,3 +453,32 @@ func nearBudgetVaultBenchmark() async throws {
     model.copySelection(dismissFocus: true); await model.finishPendingOperations()
     #expect(dismissals == 1 && model.notice == nil)
 }
+
+@MainActor @Test func draftNavigationPreservesExactEditsSelectionAndLatestCopyMetadata() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let a = try VaultRecord(.snippet(Snippet(name: "Zulu synthetic", body: "é", createdAt: date, updatedAt: date)))
+    let b = try VaultRecord(.snippet(Snippet(name: "Alpha synthetic", body: "Other", createdAt: date, updatedAt: date)))
+    let model = DesktopModel(service: TestVault(records: [a, b]), clipboard: TestClipboard())
+    model.section = .snippets
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    model.selectedID = a.id
+    model.editSelection(); await model.finishPendingOperations()
+    #expect(!model.hasDirtyDraft)
+    model.draftBody = "e\u{301}"
+    #expect(model.hasDirtyDraft)
+    model.onConfirmDiscardDraft = { false }
+    #expect(!model.selectRecord(b.id))
+    #expect(model.editingSnippet?.id == a.id && model.selectedID == a.id)
+    model.navigate(to: .history); model.ensureSelection(query: "")
+    model.navigate(to: .snippets); model.ensureSelection(query: "")
+    #expect(model.selectedID == a.id)
+    model.copySelection(); await model.finishPendingOperations()
+    model.saveDraft(); await model.finishPendingOperations()
+    guard case .snippet(let saved) = model.selectedRecord?.payload else { Issue.record("Missing saved draft"); return }
+    #expect(saved.body.utf8.elementsEqual("e\u{301}".utf8) && saved.lastCopiedAt != nil)
+    model.editSelection(); await model.finishPendingOperations()
+    var prompts = 0
+    model.onConfirmDiscardDraft = { prompts += 1; return false }
+    #expect(model.selectRecord(b.id))
+    #expect(prompts == 0 && model.editingSnippet == nil)
+}
