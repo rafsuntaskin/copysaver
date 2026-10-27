@@ -76,10 +76,14 @@ Normal launch starts locked (or offers setup for a new vault). It attempts real 
 env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
   -project CopySaver.xcodeproj -scheme CopySaver -configuration Debug \
   -destination 'generic/platform=macOS' -derivedDataPath .build/xcode-verification \
-  CODE_SIGNING_ALLOWED=NO build
+  ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO build
 ```
 
 For authenticated native testing, open the project, select your own development team, build the Debug scheme, and run the M1-08–M1-14 scenarios. Do not invent a team ID or add shared Keychain groups. An unsigned build does not establish runtime sandbox, hardened-runtime, or Keychain enforcement.
+
+Debug builds use `ONLY_ACTIVE_ARCH=YES` at project level so app/extension targets match the local Swift package when running on My Mac. Without this setting, the native widget can request an Intel slice while the Debug package contains only Apple silicon, producing a misleading incompatible-module error. CI and the universal command above explicitly use `ONLY_ACTIVE_ARCH=NO`; Release/archive builds retain both architectures.
+
+Xcode's **Sign to Run Locally** option was tested after this fix: the normal app builds and launches with an ad-hoc signature, but protected vault creation fails closed with the missing-Keychain-entitlement error. It does not enable persistent clipboard capture. A development certificate with its private key is still required for the current vault design. Keep personal signing/team selections local; they are not part of the shared project baseline.
 
 Debug uses provisional bundle ID `org.copysaver.CopySaver.dev` and scheme `copysaver-dev`; Release uses `org.copysaver.CopySaver` and `copysaver`. Vault paths and Keychain service names derive from the active bundle identity. These identifiers require ownership confirmation before distribution. The Xcode app embeds a launcher widget with a separate identifier; neither target requests network access or a shared container.
 

@@ -16,6 +16,11 @@ assert all(re.fullmatch(r"[0-9A-F]{24}", key) for key in objects)
 references = set(re.findall(r"\b[0-9A-F]{24}\b", project.read_text()))
 assert references <= set(objects), f"Unresolved project references: {references - set(objects)}"
 assert objects[data["rootObject"]]["isa"] == "PBXProject"
+project_configurations = objects[objects[data["rootObject"]]["buildConfigurationList"]]["buildConfigurations"]
+for configuration in project_configurations:
+    configuration = objects[configuration]
+    expected = "YES" if configuration["name"] == "Debug" else "NO"
+    assert configuration["buildSettings"].get("ONLY_ACTIVE_ARCH", "NO") == expected, "Debug app/extension and Swift package architectures must agree"
 for source in ["App/CopySaverMain.swift", "Widget/CopySaverWidgetMain.swift", "TestsSupport/KeychainProbe/KeychainBoundaryProbeMain.swift"]:
     assert (root / source).is_file(), source
 for folder, entitlement in [("App", "CopySaver.entitlements"), ("Widget", "CopySaverWidget.entitlements"),

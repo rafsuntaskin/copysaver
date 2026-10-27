@@ -188,7 +188,7 @@
 			};
 			name = Release;
 		};
-		800000000000000000000003 = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = dwarf; SDKROOT = macosx; }; name = Debug; };
+		800000000000000000000003 = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = dwarf; ONLY_ACTIVE_ARCH = YES; SDKROOT = macosx; }; name = Debug; };
 		800000000000000000000004 = {isa = XCBuildConfiguration; buildSettings = {CLANG_ENABLE_MODULES = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SDKROOT = macosx; }; name = Release; };
 		900000000000000000000001 = {
 			isa = PBXProject;
