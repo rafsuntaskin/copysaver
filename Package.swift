@@ -9,10 +9,17 @@ let package = Package(
         .library(name: "CopySaverVault", targets: ["CopySaverVault"]),
         .library(name: "CopySaverPlatform", targets: ["CopySaverPlatform"]),
         .library(name: "CopySaverDesktop", targets: ["CopySaverDesktop"]),
+        .library(name: "CopySaverWidgets", targets: ["CopySaverWidgets"]),
         .executable(name: "CopySaverDev", targets: ["CopySaverDev"]),
+        .executable(name: "CopySaverWidgetCheck", targets: ["CopySaverWidgetCheck"]),
+        .executable(name: "CopySaverCrashProbe", targets: ["CopySaverCrashProbe"]),
     ],
     targets: [
         .target(name: "CopySaverDomain"),
+        .executableTarget(name: "CopySaverCrashProbe", dependencies: ["CopySaverDomain", "CopySaverVault"], path: "TestsSupport/CrashProbe"),
+        .target(name: "CopySaverWidgets"),
+        .executableTarget(name: "CopySaverWidgetCheck", dependencies: ["CopySaverWidgets"], path: "Widget", exclude: ["Info.plist", "CopySaverWidget.entitlements"]),
+        .testTarget(name: "CopySaverWidgetsTests", dependencies: ["CopySaverWidgets", "CopySaverPlatform"]),
         .target(
             name: "CopySaverVault",
             dependencies: ["CopySaverDomain"],

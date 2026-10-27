@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Static source/project/privacy checks; does not claim signed OS enforcement."""
+import json
+import plistlib
+import re
+import subprocess
+from pathlib import Path
+from urllib.parse import unquote
+import xml.etree.ElementTree as ET
+
+root = Path(__file__).resolve().parent.parent
+project = root / "CopySaver.xcodeproj/project.pbxproj"
+data = json.loads(subprocess.check_output(["plutil", "-convert", "json", "-o", "-", str(project)]))
+objects = data["objects"]
+assert all(re.fullmatch(r"[0-9A-F]{24}", key) for key in objects)
+references = set(re.findall(r"\b[0-9A-F]{24}\b", project.read_text()))
+assert references <= set(objects), f"Unresolved project references: {references - set(objects)}"
+assert objects[data["rootObject"]]["isa"] == "PBXProject"
+for source in ["App/CopySaverMain.swift", "Widget/CopySaverWidgetMain.swift"]:
+    assert (root / source).is_file(), source
+for folder, entitlement in [("App", "CopySaver.entitlements"), ("Widget", "CopySaverWidget.entitlements")]:
+    assert plistlib.loads((root / folder / entitlement).read_bytes()) == {"com.apple.security.app-sandbox": True}
+    plistlib.loads((root / folder / "Info.plist").read_bytes())
+
+app_id = "E00000000000000000000001"
+widget_id = "E00000000000000000000002"
+for target_id in [app_id, widget_id]:
+    target = objects[target_id]
+    configurations = objects[target["buildConfigurationList"]]["buildConfigurations"]
+    settings = [objects[c]["buildSettings"] for c in configurations]
+    assert len({s["PRODUCT_BUNDLE_IDENTIFIER"] for s in settings}) == 2
+    assert all(s["ENABLE_APP_SANDBOX"] == "YES" and s["ENABLE_HARDENED_RUNTIME"] == "YES" for s in settings)
+    if target_id == widget_id:
+        assert all(s["APPLICATION_EXTENSION_API_ONLY"] == "YES" and s["SKIP_INSTALL"] == "YES" for s in settings)
+assert any(objects[dep]["target"] == widget_id for dep in objects[app_id]["dependencies"])
+phases = [objects[p] for p in objects[app_id]["buildPhases"]]
+assert any(p["isa"] == "PBXCopyFilesBuildPhase" and p["dstSubfolderSpec"] == "13" for p in phases)
+scheme = ET.parse(root / "CopySaver.xcodeproj/xcshareddata/xcschemes/CopySaver.xcscheme")
+assert all(node.attrib["BlueprintIdentifier"] in objects for node in scheme.findall(".//BuildableReference"))
+
+package = (root / "Package.swift").read_text()
+assert '.target(name: "CopySaverWidgets")' in package, "Widget must have no app/vault dependencies"
+for source in (root / "Sources/CopySaverWidgets").glob("*.swift"):
+    text = source.read_text()
+    assert set(re.findall(r"^import (\w+)", text, re.M)) <= {"Foundation", "SwiftUI", "WidgetKit"}
+    for forbidden in ["NSPasteboard", "SecItem", "UserDefaults", "FileManager", "URLSession", "CopySaverVault", "CopySaverPlatform"]:
+        assert forbidden not in text, f"Widget privacy regression: {forbidden}"
+
+spec = (root / "spec.md").read_text()
+tasks = re.findall(r"^- \[([ x])\] \*\*([A-Z]+\d?-\d+)\*\*", spec, re.M)
+assert len(tasks) == len({identifier for _, identifier in tasks}), "Duplicate checklist ID"
+links = 0
+for source in root.rglob("*.md"):
+    if any(part.startswith(".") for part in source.relative_to(root).parts):
+        continue
+    for target in re.findall(r"!?\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)", source.read_text()):
+        if "://" in target or target.startswith("mailto:"):
+            continue
+        path, _, anchor = unquote(target).partition("#")
+        destination = source.parent / path if path else source
+        assert destination.exists(), f"Broken local link: {source.relative_to(root)} -> {target}"
+        if anchor and destination.suffix == ".md":
+            headings = re.findall(r"^#{1,6}\s+(.+)$", destination.read_text(), re.M)
+            slugs = {re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-") for heading in headings}
+            assert anchor in slugs, f"Missing heading: {target}"
+        links += 1
+print(f"Static checks passed: {len(objects)} project objects, app/widget separation, {len(tasks)} task IDs, {links} local links.")

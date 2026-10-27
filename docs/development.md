@@ -2,7 +2,7 @@
 
 ## Current repository state
 
-The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 78 Swift Testing tests, a native development executable, and no external package dependencies. An Xcode app project is committed but has not been built through Xcode. The widget target, CI, and release binaries are pending. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
+The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 85 Swift Testing checks (two benchmarks are opt-in), a native development executable, and no external package dependencies. An Xcode app project is committed but has not been built through Xcode. The Xcode widget target and CI/release scripts are present; signed target builds, gallery discovery, hosted CI execution, and release binaries remain pending. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
 
 ## Available standalone tools
 
@@ -16,7 +16,7 @@ make test
 make preview
 ```
 
-`make test` runs Swift Testing without XCTest. The 78 tests cover record validation/serialization, capture admission, CryptoKit encryption/tampering, an independent OpenSSL fixture, SQLite CRUD/rollback/reopen, session cancellation, Keychain query policy, strict navigation routes, UI lock/authentication races, and sensitive-copy ownership/expiry. Storage is synthetic and temporary. Platform tests use an in-memory Keychain transport and an in-memory pasteboard bridge; they never call real `SecItem` storage or the system clipboard. The access-control constructor and pasteboard-item representation use OS frameworks without authenticating or touching user data.
+`make test` runs Swift Testing without XCTest. The functional tests cover record validation/serialization, capture admission, CryptoKit encryption/tampering, an independent OpenSSL fixture, SQLite CRUD/rollback/reopen, session cancellation, Keychain query policy, strict navigation routes, UI lock/authentication races, and sensitive-copy ownership/expiry. Storage is synthetic and temporary. Platform tests use an in-memory Keychain transport and an in-memory pasteboard bridge; they never call real `SecItem` storage or the system clipboard. The access-control constructor and pasteboard-item representation use OS frameworks without authenticating or touching user data.
 
 Targeted commands use the same wrapper:
 
@@ -84,3 +84,11 @@ Native visual inspection and remaining platform gates are recorded in [native-in
 - Prefer command-scoped environment settings. Do not modify global Git settings, developer settings, or signing configuration for convenience.
 - Never weaken crypto, authentication, sandboxing, or entitlements to make a development preview appear functional.
 - Follow [CONTRIBUTING.md](../CONTRIBUTING.md) for branching, commits, validation, and progress updates.
+
+## Verification and release tools
+
+`make verify` runs static project/entitlement/widget dependency checks, local documentation/checklist validation, shell syntax, all package builds, and the functional test suite. `make build` also compiles `CopySaverWidgetCheck`, which checks the real widget entry source; do not run that executable as an app. Actual extension packaging/discovery still needs Xcode and signing. `CopySaverCrashProbe` is a test-only process fixture; its random synthetic key arrives through an anonymous pipe, never a key file/environment/argument. Neither helper is embedded in the application.
+
+The committed [CI workflow](../.github/workflows/ci.yml) runs source verification and an unsigned app/embedded-widget Xcode build on Apple silicon and Intel macOS runners. It has read-only repository permissions and a pinned checkout action. It has not run on a hosted repository yet. See [release validation](release-checklist.md) for the explicit archive/notarization workflow. Source checks, unsigned builds, and configuration are not proof of signed platform behavior.
+
+See [performance evidence](performance.md) for opt-in synthetic benchmarks. On the current machine, Xcode still fails to load CoreDevice (`_XPCTypeBool`), the installed support package reports 16.1, and `security find-identity -v -p codesigning` found zero valid identities. Apple's bundled repair package passed signature verification. No package was installed, no developer directory was changed, and no signing identity was invented.

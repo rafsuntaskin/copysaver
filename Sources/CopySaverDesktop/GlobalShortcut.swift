@@ -44,7 +44,7 @@ struct FocusShortcut: Codable, Equatable {
                 let owner = Unmanaged<GlobalShortcut>.fromOpaque(context).takeUnretainedValue()
                 var received = EventHotKeyID()
                 let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &received)
-                guard status == noErr, received.signature == owner.signature, received.id == owner.identifier else { return OSStatus(eventNotHandledErr) }
+                guard status == noErr, owner.registration != nil, received.signature == owner.signature, received.id == owner.identifier else { return OSStatus(eventNotHandledErr) }
                 owner.onPress?()
                 return noErr
             }
@@ -69,10 +69,11 @@ struct FocusShortcut: Codable, Equatable {
         return true
     }
 
-    func clear() {
-        if let registration { UnregisterEventHotKey(registration) }
+    @discardableResult func clear() -> Bool {
+        if let registration, UnregisterEventHotKey(registration) != noErr { return false }
         registration = nil
         current = nil
+        return true
     }
 
     func stop() {

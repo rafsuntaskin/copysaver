@@ -1,3 +1,4 @@
+import Darwin
 import CopySaverDomain
 @testable import CopySaverVault
 import CryptoKit
@@ -321,4 +322,44 @@ func unsupportedDatabaseVersionsArePreserved(version: Int) throws {
     guard case .snippet(let stored) = try await vault.record(id: original.id, access: access)?.payload else { Issue.record("Missing snippet"); return }
     #expect(Array(stored.body.utf8) == Array(replacement.body.utf8))
     #expect(Array(stored.body.utf8) != Array(original.body.utf8))
+}
+
+
+private enum CrashProbeFailure: Error { case unavailable, timeout, missingCommit }
+
+@Test func forcedProcessTerminationRecoversCommittedCiphertextWithoutCanaries() async throws {
+    let fixture = try VaultFixture()
+    let binary = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent(".build/debug/CopySaverCrashProbe")
+    guard FileManager.default.isExecutableFile(atPath: binary.path) else { throw CrashProbeFailure.unavailable }
+    let key = SymmetricKey(size: .bits256)
+    let input = Pipe(); let output = Pipe()
+    let process = Process(); process.executableURL = binary; process.arguments = [fixture.url.path]
+    process.standardInput = input; process.standardOutput = output; process.standardError = FileHandle.nullDevice
+    try process.run()
+    defer { if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL); process.waitUntilExit() } }
+    try input.fileHandleForWriting.write(contentsOf: key.withUnsafeBytes { Data($0) })
+    try input.fileHandleForWriting.close()
+    var descriptor = pollfd(fd: output.fileHandleForReading.fileDescriptor, events: Int16(POLLIN), revents: 0)
+    guard Darwin.poll(&descriptor, 1, 10_000) > 0 else { throw CrashProbeFailure.timeout }
+    var buffer = [UInt8](repeating: 0, count: 64)
+    let count = Darwin.read(descriptor.fd, &buffer, buffer.count)
+    guard count > 0, String(bytes: buffer.prefix(count), encoding: .utf8) == "committed\n" else { throw CrashProbeFailure.missingCommit }
+    Darwin.kill(process.processIdentifier, SIGKILL)
+    process.waitUntilExit()
+    #expect(process.terminationReason == .uncaughtSignal)
+    let reopened = try VaultSession.open(at: fixture.url)
+    let access = try await reopened.unlock(using: EphemeralKeyProvider(key: key))
+    let records = try await reopened.records(access: access)
+    #expect(records.count == 1)
+    guard case .snippet(let snippet) = records.first?.payload else { Issue.record("Missing crash fixture"); return }
+    #expect(snippet.body == "Synthetic committed crash canary")
+    for suffix in ["", "-wal", "-shm"] {
+        let file = URL(filePath: fixture.url.path + suffix)
+        if let bytes = try? Data(contentsOf: file) {
+            #expect(bytes.range(of: Data("Synthetic committed crash canary".utf8)) == nil)
+            #expect(bytes.range(of: Data("Synthetic crash fixture".utf8)) == nil)
+        }
+    }
+    try await reopened.close()
 }

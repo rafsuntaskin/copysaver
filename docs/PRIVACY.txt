@@ -1,0 +1,9 @@
+CopySaver is a local clipboard history and named-snippet app.
+
+Stored content is encrypted on your Mac. The key is device-bound in macOS Keychain. There is no portable backup or recovery in v0.1: losing the key can make the data unrecoverable. Keep another copy of important information.
+
+History is off until you enable it and pauses when locked. Copies from before enabling, resuming, or unlocking are skipped. Source attribution and secret filtering are best effort; do not rely on them to detect every password, private window, or confidential copy.
+
+Copying deliberately puts plaintext on the system clipboard. CopySaver marks its writes for this Mac only. Sensitive copies are marked concealed and are cleared after 30 seconds only while still owned by CopySaver. Other apps may read them; clearing cannot run while this app is suspended or after a crash.
+
+The app has no account, sync, telemetry, or automatic update checks. Launcher widgets show generic navigation only. Reset and deletion do not guarantee erasure from backups or snapshots.

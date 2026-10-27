@@ -44,7 +44,10 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     public var recordingShortcut = false
     public var clipboardPermission: ClipboardPermission = .unknown
     public private(set) var storageWritable = true
+    public private(set) var capacityMessage: String?
+    public private(set) var reviewingCleanup = false
     public var onCaptureBoundary: (() -> Void)?
+    public var onWillLock: (() -> Void)?
     public var onRequestClipboardAccess: (() -> Void)?
     public var focusActivation = UUID()
     public private(set) var presentationActive = true
@@ -96,11 +99,11 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         selectedID = id; compactShowDetail = true
     }
 
-    public var canCopy: Bool { phase == .unlocked && selectedRecord != nil && !isBusy && !isPreview }
+    public var canCopy: Bool { phase == .unlocked && selectedRecord != nil && !isBusy && !isPreview && !reviewingCleanup }
     public var settings: VaultSettings? { phase == .unlocked && !isPreview ? try? HistoryPolicy.settings(in: records) : nil }
     public var captureConditions: CaptureConditions {
         CaptureConditions(vaultUnlocked: phase == .unlocked, captureEnabled: settings?.captureEnabled ?? false,
-                          manuallyPaused: settings?.manuallyPaused ?? false, clipboardPermission: clipboardPermission, storageWritable: storageWritable)
+                          manuallyPaused: (settings?.manuallyPaused ?? false) || reviewingCleanup, clipboardPermission: clipboardPermission, storageWritable: storageWritable)
     }
     public var captureStatus: String {
         if isPreview { return "Sample data" }
@@ -109,7 +112,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         case .disabled: return "History off"
         case .paused: return "Paused"
         case .permissionNeeded: return "Clipboard permission needed"
-        case .storageUnavailable: return "Storage error"
+        case .storageUnavailable: return capacityMessage ?? "Storage error"
         case .ready: return "Capturing"
         }
     }
@@ -123,7 +126,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         saveSettings(next)
     }
     public func saveSettings(_ value: VaultSettings, confirmed: Bool = false) {
-        guard !isPreview, phase == .unlocked, !isBusy, let service else { return }
+        guard !isPreview, phase == .unlocked, !isBusy, !reviewingCleanup, let service else { return }
         onCaptureBoundary?()
         run(fallback: .unlocked, work: { try await service.updateSettings(value, confirmed: confirmed) }) { [weak self] records in
             self?.records = records
@@ -139,13 +142,14 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         }
     }
     public func cleanupHistory(now: Date = Date()) {
-        guard !isPreview, phase == .unlocked, !isBusy, let service else { return }
+        guard !isPreview, phase == .unlocked, !isBusy, !reviewingCleanup, let service else { return }
         run(fallback: .unlocked, work: { try await service.cleanup(now: now) }) { [weak self] records in
             self?.records = records
             self?.ensureSelection(query: self?.isFocusPresented == true ? self?.focusQuery ?? "" : self?.libraryQuery ?? "")
         }
     }
-    public func retryStorage() { storageWritable = true; cleanupHistory(); onCaptureBoundary?() }
+    public func retryStorage() { storageWritable = true; capacityMessage = nil; cleanupHistory(); onCaptureBoundary?() }
+    public func setCleanupReview(_ active: Bool) { reviewingCleanup = active; onCaptureBoundary?() }
     public func clearHistory() {
         guard !isPreview, phase == .unlocked, !isBusy, let service else { return }
         run(fallback: .unlocked, work: { try await service.clearHistory() }) { [weak self] records in
@@ -218,6 +222,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
             self?.records = records
             self?.phase = .unlocked
             self?.storageWritable = true
+            self?.capacityMessage = nil
             self?.ensureSelection(query: "")
             self?.onCaptureBoundary?()
         }
@@ -225,6 +230,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     }
 
     public func lock() {
+        onWillLock?()
         onCaptureBoundary?()
         generation = UUID()
         operation?.cancel()
@@ -239,6 +245,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         errorMessage = nil
         notice = nil
         isBusy = false
+        reviewingCleanup = false
         if isPreview { phase = .locked; return }
         phase = .locking
         let request = generation
@@ -265,6 +272,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     public func editSelection() {
         guard !isPreview, !isBusy, let service, case .snippet(let snippet) = selectedRecord?.payload else { return }
         if hasDirtyDraft && onConfirmDiscardDraft?() != true { return }
+        if snippet.isSensitive { concealSensitiveContent() }
         let presentation = sensitivePresentation
         run(fallback: .unlocked, work: {
             if snippet.isSensitive { try await service.authenticateSensitiveAccess() }
@@ -348,6 +356,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
 
     public func revealSelection() {
         guard !isPreview, !isBusy, let service, let record = selectedRecord, record.isSensitive else { return }
+        concealSensitiveContent()
         let presentation = sensitivePresentation
         run(fallback: .unlocked, work: { try await service.authenticateSensitiveAccess() }) { [weak self] _ in
             guard let self, self.selectedID == record.id, self.sensitivePresentation == presentation, self.presentationActive else { return }
@@ -384,6 +393,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
 
     public func copySelection(dismissFocus: Bool = false, selectedText: String? = nil) {
         guard canCopy, let service, let record = selectedRecord, selectedText == nil || !record.isSensitive else { return }
+        if record.isSensitive { concealSensitiveContent() }
         let presentation = sensitivePresentation
         let request = generation
         operation?.cancel(); isBusy = true; notice = nil; errorMessage = nil
@@ -407,7 +417,10 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
             } catch {
                 guard let self, self.generation == request, !Task.isCancelled else { return }
                 self.isBusy = false
+                if Self.isIntegrityFailure(error) { self.lock(); self.errorMessage = Self.message(for: error); return }
+                if error is KeychainFailure || error is CancellationError { self.concealSensitiveContent() }
                 if error as? VaultError == .storageFailure { self.storageWritable = false; self.onCaptureBoundary?() }
+                self.stopCaptureIfCapacityReached(error)
                 if copied { self.notice = "Copied"; self.errorMessage = "Copied, but the last-copy time could not be saved." }
                 else if error as? KeychainFailure != .cancelled, !(error is CancellationError) {
                     self.errorMessage = error is ClipboardFailure ? "Copy failed. Please try again." : Self.message(for: error)
@@ -469,9 +482,11 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
                 self.isBusy = false
                 self.phase = fallback
                 if error as? VaultError == .storageFailure { self.storageWritable = false; self.onCaptureBoundary?() }
-                if error as? VaultError == .corruptDatabase || error as? VaultError == .authenticationFailed {
+                self.stopCaptureIfCapacityReached(error)
+                if Self.isIntegrityFailure(error) {
                     self.lock()
                 }
+                if error is KeychainFailure || error is CancellationError { self.concealSensitiveContent() }
                 if !(error is CancellationError), error as? KeychainFailure != .cancelled {
                     self.errorMessage = Self.message(for: error)
                 }
@@ -499,6 +514,19 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         case VaultError.authenticationFailed, VaultError.corruptDatabase, VaultError.invalidRecord: "This vault could not be verified. Its saved files have been preserved."
         default: "The operation could not be completed. Your saved files have been preserved."
         }
+    }
+
+    private static func isIntegrityFailure(_ error: any Error) -> Bool {
+        guard let error = error as? VaultError else { return false }
+        return [.corruptDatabase, .authenticationFailed, .invalidRecord, .unsupportedEnvelopeVersion].contains(error)
+    }
+
+    private func stopCaptureIfCapacityReached(_ error: any Error) {
+        if error as? HistoryFailure == .historyLimitReached { capacityMessage = "History limit reached" }
+        else if error as? HistoryFailure == .storageCapacity { capacityMessage = "Storage limit reached" }
+        else { return }
+        storageWritable = false
+        onCaptureBoundary?()
     }
 
     #if DEBUG

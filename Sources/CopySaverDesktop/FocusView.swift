@@ -119,6 +119,9 @@ struct SettingsView: View {
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
+                    Text("Sidebar & desktop widget").font(.headline)
+                    Text("In a build with the widget extension, open Notification Center, choose Edit Widgets, search for CopySaver, and add the small or medium launcher. Drag a widget to the desktop if you prefer. Widgets contain navigation only; saved text stays inside the app.").foregroundStyle(.secondary)
+                    Divider()
                     Text("About CopySaver").font(.headline)
                     Text("Development build · local storage · MIT license").foregroundStyle(.secondary)
                 }
@@ -180,6 +183,12 @@ private struct HistorySettingsView: View {
                 Text("One bundle identifier per line. Browser exclusions cover every window, including private windows. Attribution and secret detection are best effort.").foregroundStyle(.secondary)
                 TextEditor(text: $excluded).font(.system(size: 12, design: .monospaced)).frame(height: 70)
                     .border(Color(nsColor: .separatorColor)).accessibilityLabel("Excluded application bundle identifiers")
+                ForEach(installedManagers, id: \.id) { manager in
+                    Button("Add \(manager.name) to exclusions") {
+                        let current = Set(excluded.split(whereSeparator: \.isNewline).map(String.init))
+                        excluded = current.union([manager.id]).sorted().joined(separator: "\n")
+                    }.disabled(model.isPreview)
+                }
                 HStack {
                     Button("Apply history settings") { proposeSettings(settings) }.disabled(model.isBusy || model.isPreview)
                     Button("Clear history…", role: .destructive) { confirmClear = true }.disabled(model.isBusy || model.isPreview)
@@ -190,9 +199,10 @@ private struct HistorySettingsView: View {
         .task { load() }
         .onChange(of: model.settings) { _, _ in load() }
         .confirmationDialog("Remove \(removalCount) history items?", isPresented: $confirmLimits, titleVisibility: .visible) {
-            Button("Apply limits and remove history", role: .destructive) { if let proposed { model.saveSettings(proposed, confirmed: true) }; proposed = nil }
-            Button("Cancel", role: .cancel) { proposed = nil }
+            Button("Apply limits and remove history", role: .destructive) { model.setCleanupReview(false); if let proposed { model.saveSettings(proposed, confirmed: true) }; proposed = nil }
+            Button("Cancel", role: .cancel) { model.setCleanupReview(false); proposed = nil }
         } message: { Text("Pinned items and snippets are kept. Removed history cannot be restored.") }
+        .onChange(of: confirmLimits) { _, shown in if !shown { model.setCleanupReview(false) } }
         .confirmationDialog("Clear all clipboard history?", isPresented: $confirmClear, titleVisibility: .visible) {
             Button("Clear history", role: .destructive) { model.clearHistory() }
             Button("Cancel", role: .cancel) {}
@@ -203,11 +213,24 @@ private struct HistorySettingsView: View {
         count = settings.historyCountLimit; days = settings.retentionDays; timeout = settings.idleLockTimeout
         excluded = settings.excludedBundleIDs.sorted().joined(separator: "\n")
     }
+    private var installedManagers: [(id: String, name: String)] {
+        [("com.1password.1password", "1Password"), ("com.agilebits.onepassword7", "1Password 7"),
+         ("com.bitwarden.desktop", "Bitwarden"), ("org.keepassxc.keepassxc", "KeePassXC")].compactMap { id, name in
+            guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) != nil,
+                  !excluded.split(whereSeparator: \.isNewline).contains(Substring(id)) else { return nil }
+            return (id, name)
+        }
+    }
     private func proposeSettings(_ current: VaultSettings) {
         let ids = Set(excluded.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
         guard let next = try? current.updating(historyCountLimit: count, retentionDays: days, excludedBundleIDs: ids, idleLockTimeout: timeout) else { return }
-        if let retained = try? HistoryPolicy.retain(model.records, settings: next, now: Date()), retained.count < model.records.count {
-            proposed = next; removalCount = model.records.count - retained.count; confirmLimits = true
+        let verification = try? VaultRecord(.verification(VaultVerification(vaultID: UUID())))
+        let overhead = verification.flatMap { try? RecordCodec.encode($0).count } ?? 512
+        var planned = model.records.filter { if case .settings = $0.payload { return false }; return true }
+        if let record = try? VaultRecord(.settings(next)) { planned.append(record) }
+        if let retained = try? HistoryPolicy.fit(HistoryPolicy.retain(planned, settings: next, now: Date()), settings: next, budget: RecordLimits.maximumPayloadBytes - overhead - 28), retained.count < planned.count {
+            model.setCleanupReview(true)
+            proposed = next; removalCount = planned.count - retained.count; confirmLimits = true
         } else { model.saveSettings(next) }
     }
 }

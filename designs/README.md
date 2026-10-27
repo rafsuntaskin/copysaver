@@ -39,7 +39,7 @@ Use Native library (1) for the full application window and Focus panel (2) for F
 
 ## Sidebar widget addition
 
-Add a native macOS Notification Center widget, also usable on the desktop. The small size opens Focus mode; the medium size adds History and Snippets links. Keep it minimal and consistent with concepts 1 and 2. It uses static generic labels, without saved text, snippet names, item counts, or live vault/capture status. Links open the app and follow its normal unlock flow; the extension never accesses the clipboard, vault, or key. No widget mockup has been generated yet. Full behavior and acceptance criteria are in spec section 4.5.
+Add a native macOS Notification Center widget, also usable on the desktop. The small size opens Focus mode; the medium size adds History and Snippets links. Keep it minimal and consistent with concepts 1 and 2. It uses static generic labels, without saved text, snippet names, item counts, or live vault/capture status. Links open the app and follow its normal unlock flow; the extension never accesses the clipboard, vault, or key. The source implementation follows this generic-label launcher layout; signed gallery/snapshot validation is pending. Full behavior and acceptance criteria are in spec section 4.5.
 
 Refine the remaining states within this direction: snippet editing, masked sensitive snippet, locked vault, first run, permission denied, shortcut recording/conflicts, and empty/search-empty states. Sensitive content must require authentication before reveal, editing, copying, or changing sensitivity.
 

@@ -4,7 +4,7 @@
 
 Read [spec.md](spec.md), its delivery checklist and progress log, [CONTRIBUTING.md](CONTRIBUTING.md), and [docs/development.md](docs/development.md) before changing code. For UI work, also read [PRODUCT.md](PRODUCT.md), [DESIGN.md](DESIGN.md), and [designs/README.md](designs/README.md), and inspect the selected mockups.
 
-`spec.md` is the source of truth for requirements, scope, defaults, and delivery status. The repository contains tested core libraries and a native development scaffold. Clipboard capture and retention have tested implementations; widgets and signed security/release checks remain unfinished. Do not invent build targets, commands, passing tests, or implemented features.
+`spec.md` is the source of truth for requirements, scope, defaults, and delivery status. The repository contains tested core libraries and a native development scaffold. Clipboard capture, retention, snippet workflows, and a launcher widget have source implementations and tests. Signed security/release checks and widget discovery remain unfinished. Do not invent build targets, commands, passing tests, or implemented features.
 
 ## Product and architecture
 

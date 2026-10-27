@@ -224,7 +224,7 @@ struct VaultGateView: View {
             Image(systemName: model.phase == .needsSetup ? "checkmark.shield" : "lock").font(.system(size: 34)).foregroundStyle(.secondary)
             Text(model.phase == .needsSetup ? "A private home for your text" : model.phase == .failed ? "Vault unavailable" : "Your vault is locked")
                 .font(.system(size: 21, weight: .semibold))
-            Text(model.phase == .needsSetup ? "History and named snippets, stored locally with a key protected by macOS Keychain." : "Unlock with Touch ID or your Mac’s login password.")
+            Text(model.phase == .needsSetup ? "History and named snippets, stored locally with a key protected by macOS Keychain." : model.phase == .failed ? "Correct the problem below, then retry." : "Unlock with Touch ID or your Mac’s login password.")
                 .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 340)
             if model.phase == .needsSetup {
                 Text("The key stays on this Mac. Losing it can make your saved data unrecoverable. Portable backup is not available yet.")
@@ -250,7 +250,7 @@ struct VaultGateView: View {
                 Button("Retry") { model.start() }.buttonStyle(.bordered)
             }
             FeedbackView(model: model)
-            if !model.isPreview && !model.isBusy && (model.phase == .locked || model.phase == .failed) {
+            if !model.isPreview && !model.isBusy && model.phase == .locked {
                 Button("Reset vault…", role: .destructive) { confirmReset = true }.font(.caption)
             }
         }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)

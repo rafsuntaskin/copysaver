@@ -77,6 +77,15 @@ public enum CopySaverApplication {
         model.onCaptureBoundary = { [weak self] in self?.monitor?.suspend() }
         model.onRequestClipboardAccess = { [weak self] in self?.monitor?.requestAccess() }
         model.onConfirmDiscardDraft = { [weak self] in self?.confirmDiscardDraft() ?? false }
+        model.onWillLock = { [weak self] in
+            for window in [self?.library, self?.panel].compactMap({ $0 }) {
+                window.endEditing(for: nil)
+                if let editor = window.fieldEditor(false, for: nil) as? NSTextView {
+                    editor.string = ""; editor.undoManager?.removeAllActions()
+                }
+                window.undoManager?.removeAllActions()
+            }
+        }
         shortcut.onPress = { [weak self] in self?.toggleFocus() }
         installMenu()
         installLifecycleObservers()
@@ -347,7 +356,7 @@ public enum CopySaverApplication {
     }
 
     private func clearShortcut() {
-        shortcut.clear()
+        guard shortcut.clear() else { model.shortcutMessage = "The shortcut could not be cleared. Try again."; return }
         model.shortcutDescription = "Not set"
         model.shortcutMessage = nil
         UserDefaults.standard.removeObject(forKey: "focusShortcut")

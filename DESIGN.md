@@ -34,3 +34,7 @@ A compact floating panel with search first, History/Snippets switch, optional pi
 ## Craft and verification
 
 Use live SwiftUI text, controls, lists, and SF Symbols for the approved visual ingredients; the mock PNGs are references only. No additional raster assets are needed for this utility. Use short state transitions, respect reduced motion, and inspect the running native app at normal and compact sizes in light/dark appearance. Record pending checks rather than treating compilation or a generated screenshot as UX, accessibility, or security validation.
+
+## Launcher widget
+
+The approved generic launcher requirement is carried into native WidgetKit: small uses name/icon, a quiet Clipboard & snippets label, and Open Focus Mode; medium adds separate History/Snippets links. Use system widget margins, semantic foregrounds and SF Symbols. This is the same restrained utility direction, with no content thumbnails, status metrics, new imagery, or alternate visual theme. Actual system gallery rendering remains a native validation gate.

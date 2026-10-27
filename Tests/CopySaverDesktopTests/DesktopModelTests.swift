@@ -1,3 +1,4 @@
+import CryptoKit
 import CopySaverDomain
 @testable import CopySaverDesktop
 import CopySaverPlatform
@@ -10,7 +11,7 @@ private actor TestVault: DesktopVaultAccess {
     var records: [VaultRecord] = []
     var authenticationCalls = 0
     let exists: Bool
-    let authenticationFailure: KeychainFailure?
+    var authenticationFailure: KeychainFailure?
     let authenticationGate: TestGate?
     let unlockGate: TestGate?
     init(records: [VaultRecord] = [], exists: Bool = true, authenticationFailure: KeychainFailure? = nil, authenticationGate: TestGate? = nil, unlockGate: TestGate? = nil) {
@@ -20,6 +21,7 @@ private actor TestVault: DesktopVaultAccess {
         self.authenticationGate = authenticationGate
         self.unlockGate = unlockGate
     }
+    func failAuthentication(_ failure: KeychainFailure) { authenticationFailure = failure }
     func prepare() -> Bool { prepareCalls += 1; return exists }
     func create() {}
     func unlock() async -> [VaultRecord] { await unlockGate?.wait(); return records }
@@ -66,6 +68,7 @@ private enum GateFailure: Error { case noRequest }
     func clearExpiredCopy() {}
 }
 
+#if DEBUG
 @MainActor @Test func previewDoesNotTouchVaultOrClipboardAndLockPurgesContent() async {
     let service = TestVault()
     let clipboard = TestClipboard()
@@ -103,6 +106,8 @@ private enum GateFailure: Error { case noRequest }
         #expect(model.revealedID == nil)
     }
 }
+
+#endif
 
 @Test func shortcutValidationProtectsNormalTypingAndSpotlight() {
     #expect(FocusShortcut.standard.isValid)
@@ -341,4 +346,110 @@ private func sensitiveRecord() throws -> VaultRecord {
     await model.finishPendingOperations()
     #expect(cuts == 0 && clipboard.copies == 0)
     #expect(model.notice == nil)
+}
+
+
+@MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["COPYSAVER_BENCHMARKS"] == "1"))
+func representativeSearchBenchmark() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    var records: [VaultRecord] = []
+    for index in 0..<5_000 {
+        let instant = date.addingTimeInterval(Double(index))
+        records.append(try VaultRecord(.history(HistoryItem(text: "Synthetic entry \(index): café, 東京, reusable text and exact whitespace.  ", firstSeenAt: instant, lastSeenAt: instant))))
+    }
+    for index in 0..<2_000 {
+        records.append(try VaultRecord(.snippet(Snippet(name: String(format: "Synthetic %04d", index), body: "Synthetic body café 東京", isSensitive: index % 5 == 0, createdAt: date, updatedAt: date))))
+    }
+    let model = DesktopModel(service: TestVault(records: records), clipboard: nil)
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    var times: [Double] = []
+    let clock = ContinuousClock()
+    for index in 0..<80 {
+        model.section = index % 2 == 0 ? .history : .snippets
+        let query = ["synthetic", "CAFÉ", "東京", "absent"][index % 4]
+        let start = clock.now
+        let matches = model.items(query: query)
+        let elapsed = start.duration(to: clock.now).components
+        times.append(Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
+        #expect(matches.count <= (model.section == .history ? 5_000 : 2_000))
+    }
+    times.sort()
+    print(String(format: "BENCH search records=7000 samples=80 p50_ms=%.2f p95_ms=%.2f", times[40], times[75]))
+}
+
+private struct BenchmarkKeys: VaultKeyProvider {
+    let key: SymmetricKey
+    func loadKey(for vaultID: UUID) async throws -> SymmetricKey { key }
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["COPYSAVER_BENCHMARKS"] == "1"))
+func nearBudgetVaultBenchmark() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("copysaver-benchmark-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let key = SymmetricKey(size: .bits256)
+    let vault = try VaultSession.create(at: directory.appendingPathComponent("vault.sqlite"), key: key)
+    let access = try await vault.unlock(using: BenchmarkKeys(key: key))
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let filler = String(repeating: "x", count: RecordLimits.maximumTextBytes - 32)
+    let records = try (0..<490).map { index in
+        try VaultRecord(.history(HistoryItem(text: "Synthetic \(index) " + filler, firstSeenAt: date, lastSeenAt: date)))
+    }
+    let clock = ContinuousClock(); let start = clock.now
+    try await vault.apply(saving: records, access: access)
+    let commit = start.duration(to: clock.now).components
+    let readStart = clock.now
+    let loaded = try await vault.records(access: access)
+    let read = readStart.duration(to: clock.now).components
+    #expect(loaded.count == 490)
+    let original = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
+    let preserved = loaded.allSatisfy { record in
+        guard case .history(let a) = record.payload, case .history(let b) = original[record.id]?.payload else { return false }
+        return a.text.utf8.elementsEqual(b.text.utf8)
+    }
+    #expect(preserved)
+    print(String(format: "BENCH vault records=490 approximate_plaintext_mib=122.5 commit_ms=%.2f read_ms=%.2f", Double(commit.seconds) * 1_000 + Double(commit.attoseconds) / 1e15, Double(read.seconds) * 1_000 + Double(read.attoseconds) / 1e15))
+    try await vault.close()
+}
+
+
+@MainActor @Test func cancelledFreshCopyConcealsAnExistingReveal() async throws {
+    let vault = TestVault(records: [try sensitiveRecord()])
+    let clipboard = TestClipboard()
+    let model = DesktopModel(service: vault, clipboard: clipboard)
+    model.section = .snippets
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    model.revealSelection(); await model.finishPendingOperations()
+    #expect(model.revealedID != nil)
+    await vault.failAuthentication(.cancelled)
+    model.copySelection(); await model.finishPendingOperations()
+    #expect(model.revealedID == nil && clipboard.copies == 0)
+}
+
+@MainActor @Test func cleanupReviewPausesAdmissionWithoutChangingManualPreference() async throws {
+    let settings = try VaultRecord(.settings(VaultSettings(captureEnabled: true)))
+    let model = DesktopModel(service: TestVault(records: [settings]), clipboard: TestClipboard())
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    model.clipboardPermission = .allowed
+    #expect(model.captureConditions.canCapture)
+    model.setCleanupReview(true)
+    #expect(!model.captureConditions.canCapture && model.settings?.manuallyPaused == false)
+    model.setCleanupReview(false)
+    #expect(model.captureConditions.canCapture)
+    model.setCleanupReview(true); model.lock(); await model.finishPendingOperations()
+    #expect(!model.reviewingCleanup && model.records.isEmpty)
+}
+
+@MainActor @Test func copyDismissesOnlyAfterSuccessfulWriteAndMetadataCommit() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.history(HistoryItem(text: "Synthetic copy", firstSeenAt: date, lastSeenAt: date)))
+    let clipboard = TestClipboard()
+    let model = DesktopModel(service: TestVault(records: [record]), clipboard: clipboard)
+    model.start(); await model.finishPendingOperations(); await model.unlock()?.value
+    var dismissals = 0
+    model.onDismissFocus = { dismissals += 1 }
+    model.copySelection(dismissFocus: true); await model.finishPendingOperations()
+    #expect(dismissals == 1 && clipboard.copies == 1)
+    clipboard.shouldFail = true
+    model.copySelection(dismissFocus: true); await model.finishPendingOperations()
+    #expect(dismissals == 1 && model.notice == nil)
 }

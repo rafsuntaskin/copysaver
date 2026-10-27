@@ -1,0 +1,25 @@
+name: Source verification
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Core, widget, and source checks
+        run: make verify
+      - name: App and embedded widget build
+        run: >-
+          xcodebuild -project CopySaver.xcodeproj -scheme CopySaver
+          -configuration Debug -destination 'generic/platform=macOS'
+          -derivedDataPath .build/xcode-ci CODE_SIGNING_ALLOWED=NO build

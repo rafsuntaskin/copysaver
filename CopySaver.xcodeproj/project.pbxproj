@@ -4,24 +4,82 @@
 	classes = {};
 	objectVersion = 56;
 	objects = {
+
+        A00000000000000000000003 = {isa = PBXBuildFile; fileRef = B00000000000000000000005; };
+        A00000000000000000000004 = {isa = PBXBuildFile; fileRef = B00000000000000000000008; settings = {ATTRIBUTES = (RemoveHeadersOnCopy); }; };
+        A00000000000000000000005 = {isa = PBXBuildFile; productRef = F00000000000000000000003; };
+        A00000000000000000000007 = {isa = PBXContainerItemProxy; containerPortal = 900000000000000000000001; proxyType = 1; remoteGlobalIDString = E00000000000000000000002; remoteInfo = CopySaverWidget; };
+        A00000000000000000000008 = {isa = PBXTargetDependency; target = E00000000000000000000002; targetProxy = A00000000000000000000007; };
+        B00000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopySaverWidgetMain.swift; sourceTree = "<group>"; };
+        B00000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+        B00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CopySaverWidget.entitlements; sourceTree = "<group>"; };
+        B00000000000000000000008 = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; path = CopySaverWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+        C00000000000000000000004 = {isa = PBXGroup; children = (B00000000000000000000005, B00000000000000000000006, B00000000000000000000007); path = Widget; sourceTree = "<group>"; };
+        D00000000000000000000004 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000003); runOnlyForDeploymentPostprocessing = 0; };
+        D00000000000000000000005 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000005); runOnlyForDeploymentPostprocessing = 0; };
+        D00000000000000000000006 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+        D00000000000000000000007 = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = (A00000000000000000000004); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0; };
+        E00000000000000000000002 = {
+            isa = PBXNativeTarget; buildConfigurationList = 700000000000000000000003;
+            buildPhases = (D00000000000000000000004, D00000000000000000000005, D00000000000000000000006);
+            buildRules = (); dependencies = (); name = CopySaverWidget;
+            packageProductDependencies = (F00000000000000000000003);
+            productName = CopySaverWidget; productReference = B00000000000000000000008;
+            productType = "com.apple.product-type.app-extension";
+        };
+        F00000000000000000000003 = {isa = XCSwiftPackageProductDependency; package = F00000000000000000000001; productName = CopySaverWidgets; };
+        700000000000000000000003 = {isa = XCConfigurationList; buildConfigurations = (800000000000000000000005, 800000000000000000000006); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+
+        800000000000000000000005 = {
+            isa = XCBuildConfiguration; name = Debug;
+            buildSettings = {
+                APPLICATION_EXTENSION_API_ONLY = YES;
+                CODE_SIGN_ENTITLEMENTS = Widget/CopySaverWidget.entitlements;
+                CODE_SIGN_STYLE = Automatic;
+                ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES;
+                GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Widget/Info.plist;
+                LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
+                MACOSX_DEPLOYMENT_TARGET = 14.0;
+                PRODUCT_BUNDLE_IDENTIFIER = org.copysaver.CopySaver.dev.Widget; PRODUCT_NAME = CopySaverWidget;
+                SDKROOT = macosx; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0;
+                SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+            };
+        };
+
+        800000000000000000000006 = {
+            isa = XCBuildConfiguration; name = Release;
+            buildSettings = {
+                APPLICATION_EXTENSION_API_ONLY = YES;
+                CODE_SIGN_ENTITLEMENTS = Widget/CopySaverWidget.entitlements;
+                CODE_SIGN_STYLE = Automatic;
+                ENABLE_APP_SANDBOX = YES; ENABLE_HARDENED_RUNTIME = YES;
+                GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = Widget/Info.plist;
+                LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @executable_path/../../../../Frameworks";
+                MACOSX_DEPLOYMENT_TARGET = 14.0;
+                PRODUCT_BUNDLE_IDENTIFIER = org.copysaver.CopySaver.Widget; PRODUCT_NAME = CopySaverWidget;
+                SDKROOT = macosx; SKIP_INSTALL = YES; SWIFT_VERSION = 6.0;
+                SWIFT_OPTIMIZATION_LEVEL = "-O";
+            };
+        };
+
 		A00000000000000000000001 = {isa = PBXBuildFile; fileRef = B00000000000000000000001; };
 		A00000000000000000000002 = {isa = PBXBuildFile; productRef = F00000000000000000000002; };
 		B00000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CopySaverMain.swift; sourceTree = "<group>"; };
 		B00000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B00000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CopySaver.entitlements; sourceTree = "<group>"; };
 		B00000000000000000000004 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = CopySaver.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		C00000000000000000000001 = {isa = PBXGroup; children = (C00000000000000000000002, C00000000000000000000003); sourceTree = "<group>"; };
+		C00000000000000000000001 = {isa = PBXGroup; children = (C00000000000000000000002, C00000000000000000000004, C00000000000000000000003); sourceTree = "<group>"; };
 		C00000000000000000000002 = {isa = PBXGroup; children = (B00000000000000000000001, B00000000000000000000002, B00000000000000000000003); path = App; sourceTree = "<group>"; };
-		C00000000000000000000003 = {isa = PBXGroup; children = (B00000000000000000000004); name = Products; sourceTree = "<group>"; };
+		C00000000000000000000003 = {isa = PBXGroup; children = (B00000000000000000000004, B00000000000000000000008); name = Products; sourceTree = "<group>"; };
 		D00000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
 		D00000000000000000000002 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000002); runOnlyForDeploymentPostprocessing = 0; };
 		D00000000000000000000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		E00000000000000000000001 = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 700000000000000000000001;
-			buildPhases = (D00000000000000000000001, D00000000000000000000002, D00000000000000000000003);
+			buildPhases = (D00000000000000000000001, D00000000000000000000002, D00000000000000000000003, D00000000000000000000007);
 			buildRules = ();
-			dependencies = ();
+			dependencies = (A00000000000000000000008);
 			name = CopySaver;
 			packageProductDependencies = (F00000000000000000000002);
 			productName = CopySaver;
@@ -93,7 +151,7 @@
 			productRefGroup = C00000000000000000000003;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (E00000000000000000000001);
+			targets = (E00000000000000000000001, E00000000000000000000002);
 		};
 	};
 	rootObject = 900000000000000000000001;
