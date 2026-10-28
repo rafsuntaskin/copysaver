@@ -144,3 +144,20 @@ The build passes. `codesign --verify --strict --deep` passes for the resulting a
 The normal app creates its new synthetic development vault and returns locked with “Vault created. Unlock to continue.” The first authenticated unlock was requested. Authentication, helper-denial, real capture and complete acceptance gates remain pending until their actual outcomes are recorded.
 
 The separate probe also builds with `-scheme CopySaverKeychainProbe -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode-signed CODE_SIGN_IDENTITY='Apple Development' -allowProvisioningUpdates`. Its signature verifies with the same team and a distinct application identifier/own Keychain group. The real helper scenario has not run. `make verify` passes 87 functional checks plus seven probe guards; two opt-in benchmarks are skipped. M1-08 configuration is validated; M1-09/M1-10/M1-14 and SEC-05 remain open.
+
+## Signed native capture and first unlock
+
+October 27, 2026, Apple silicon macOS 26.6.2, signed Debug build from `1621a6f`: the device owner completed the system authentication prompt, and the app displayed its unlocked empty library with History off. Enabling Keep clipboard history first displayed Clipboard permission needed; after the owner changed permission, it displayed Capturing. No Accessibility or Input Monitoring prompt was requested.
+
+The following synthetic native scenarios passed:
+
+- Create a fictional named snippet with multiline body and category; the UI reports Snippet saved.
+- Copy multiline Unicode plain text from Xcode into the system clipboard; the real monitor persists it and displays it in History. Searching for its Japanese substring finds it.
+- Verify the captured body and a normal Command-V paste of CopySaver’s copy-back into a temporary snippet draft match the complete synthetic fixture exactly, including Unicode, indentation, trailing spaces and terminal newline. Both comparisons use the actual accessibility values and return true. Discard the unsaved paste-check draft.
+- Copy the history item and named snippet through the app. History remains one external record with seen count 1; app-owned copies do not create a feedback loop.
+- Quit and relaunch the signed app. It starts Locked, conceals the records and stops capture. The owner completes fresh authentication; history and the named snippet reappear, and capture resumes. The reopened history body again matches the full Unicode/whitespace fixture exactly.
+- Inspect only this confirmed synthetic development vault using read-only SQLite and byte scans. Four encrypted rows persist (verification, settings, history and snippet); unique body/title/category canaries are absent from database/WAL/SHM. This narrow scan does not complete SEC-01’s wider logs/preferences/crash/migration cases.
+
+Xcode’s save path removed trailing spaces from its paste destination, so a saved-file byte comparison failed. The separate native plain-text draft paste check above preserved them exactly; the failed file comparison is not counted as passing evidence. The captured source label was Chrome despite the copy being routed to Xcode by automation. Source attribution remains best effort; real foreground/exclusion scenarios remain SEC-09.
+
+The basic local development-vault capture/search/copy scenario passes on this Mac. FUNC-01 keeps its explicit offline repeat pending; the Mac’s network was not disabled for this run. The owner also confirms authentication after relaunch, and native UI verifies exact history/snippet persistence. A cross-app shortcut automation attempt did not visibly show the Focus panel, so the global shortcut gate remains unverified. Minimum-OS/Intel, full permission-denial/recovery, helper isolation, system lifecycle, fresh sensitive operations, Spaces/global shortcut, widget, VoiceOver, networking observation and clean-install release checks remain open.

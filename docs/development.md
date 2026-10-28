@@ -2,7 +2,7 @@
 
 ## Current repository state
 
-The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 89 Swift Testing checks (two benchmarks are opt-in), a native development executable, and no external package dependencies. The Xcode app and embedded widget build successfully in Debug and Release for Apple silicon and Intel with signing disabled. Apple Development app/widget builds now pass on the local Apple silicon Mac; protected vault creation passes. Authentication, helper isolation, gallery discovery, hosted CI execution, and release binaries remain separate gates. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
+The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 89 Swift Testing checks (two benchmarks are opt-in), a native development executable, and no external package dependencies. The Xcode app and embedded widget build successfully in Debug and Release for Apple silicon and Intel with signing disabled. Apple Development app/widget builds now pass on the local Apple silicon Mac; protected vault creation, owner-authenticated first unlock, and synthetic clipboard capture/search/copy-back pass. Authenticated relaunch preserves the synthetic history/snippet and resumes capture. Helper isolation, full authentication cases, gallery discovery, hosted CI execution, and release binaries remain separate gates. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
 
 ## Available standalone tools
 
