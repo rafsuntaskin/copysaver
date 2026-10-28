@@ -33,12 +33,12 @@ The preview is a separate DEBUG-only mode with fictional records and no vault/au
 
 ## Remaining platform gates
 
-- **M1-08–M1-10:** Build the Xcode project with a real development identity, verify device-only user-presence enforcement/password fallback, cancellation/lockout, and denial to a separately signed helper. Verify a clean install, reopen, and missing-key preservation. The user-approved support-package repair resolved SDK loading; unsigned universal app/widget builds pass. A valid signing identity is still missing.
+- **M1-08–M1-10:** Build the Xcode project with a real development identity, verify device-only user-presence enforcement/password fallback, cancellation/lockout, and denial to a separately signed helper. Verify a clean install, reopen, and missing-key preservation. The user-approved support-package repair resolved SDK loading; unsigned universal app/widget builds pass. A valid Apple Development identity is now installed; provisioned app/widget builds and protected vault creation pass. Authenticated unlock and helper isolation still need their own evidence.
 - **M1-11:** Prove all lock paths on supported macOS versions. Public sleep/session/display-sleep observers and the encrypted 5/15/30-minute or system-lock-only idle preference are wired. The supplemental `com.apple.screenIsLocked` distributed notification name is undocumented and is not accepted as supported lock coverage. Resolve that dependency before completing the gate. Capture remains off by default; enabling it requires an explicit action while unlocked.
 - **M1-12/M2-08/M2-10/M3-06:** Verify real sandboxed pasteboard permissions, external-copy races, expiry across sleep/wake, global shortcut conflict/atomic replacement, focus restoration, active Space/full-screen behavior, and panel keyboard actions. Unit tests establish policy/state behavior only. Command/Control is required in a custom shortcut; plain typing, Option-only bindings, and Command-Space are rejected. Shortcut validation cannot detect every system or app reservation before registration.
 - **M1-13/M4:** Package/test the generic launcher widget, then audit discovery, URL routing on cold/locked launch, accessibility, performance, diagnostics, entitlements, and signed distribution.
 
-Only appearance and shortcut preferences use UserDefaults. The app sandbox entitlement is the only explicitly requested entitlement; there is no network entitlement, shared container, or shared Keychain group. Development and production identifiers remain provisional pending ownership confirmation. No release security claim follows from these source or unit checks.
+Only appearance and shortcut preferences use UserDefaults. The app and separate probe explicitly request App Sandbox and only their own bundle-derived Keychain group. The widget and standalone ad-hoc preview request only App Sandbox. There is no network entitlement, shared container, or shared Keychain group. Development and production identifiers remain provisional pending ownership confirmation. No release security claim follows from these source or unit checks.
 
 ## Clipboard implementation update
 
@@ -124,3 +124,23 @@ Running the scheme in Xcode initially failed after both an ordinary build and Cl
 `env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -project CopySaver.xcodeproj -scheme CopySaver -configuration Debug -destination 'generic/platform=macOS' -derivedDataPath .build/xcode-verification ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO build` passes; `lipo -archs` confirms arm64 and x86_64 in the app and embedded widget. Static checks enforce the Debug/Release architecture defaults. No Swift runtime code changed in this fix.
 
 The user selected Sign to Run Locally for app/widget Debug. The resulting app passes strict signature verification but reports `Signature=adhoc` and no TeamIdentifier. Its only emitted entitlements are sandbox and Debug get-task-allow. The real Create encrypted vault action fails closed with the expected missing-Keychain-entitlement message. No vault unlock/capture is claimed, and no plaintext/authentication fallback was added. The user's personal team/local-signing edits remain uncommitted and are preserved separately from the shared architecture fix.
+
+## Provisioned development Keychain identity
+
+On October 27, 2026, an ordinary Keychain check outside the coding sandbox confirmed a valid Apple Development certificate and private key. The sandboxed check had hidden it. Selecting Development for app/widget produced valid real signatures, but the sandbox-only app still failed protected creation with `errSecMissingEntitlement`; certificate signing alone was insufficient.
+
+The app and separate boundary probe now request one Keychain group: `$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)`. Xcode expands it to each target’s own identity and supplies the application/team identifier entitlements and embedded provisioning profile. The widget retains no Keychain group. The standalone `make app` keeps separate sandbox-only preview entitlements so ad-hoc layout inspection remains available without claiming restricted access. No authentication or storage fallback was added.
+
+Local signed build command, using the user’s uncommitted team/signing selections:
+
+```sh
+env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -project CopySaver.xcodeproj -scheme CopySaver -configuration Debug \
+  -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode-signed build
+```
+
+The build passes. `codesign --verify --strict --deep` passes for the resulting app/embedded widget. The app emits sandbox, hardened runtime, Debug get-task-allow, its real team/application identifier and exactly its own Keychain group; the widget emits sandbox/get-task-allow without a Keychain group. The embedded development profile authorizes the app identifier and team-prefix Keychain groups; the executable claims only its own group. The local Personal Team profile is time-limited; future rebuilding may require reprovisioning.
+
+The normal app creates its new synthetic development vault and returns locked with “Vault created. Unlock to continue.” The first authenticated unlock was requested. Authentication, helper-denial, real capture and complete acceptance gates remain pending until their actual outcomes are recorded.
+
+The separate probe also builds with `-scheme CopySaverKeychainProbe -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode-signed CODE_SIGN_IDENTITY='Apple Development' -allowProvisioningUpdates`. Its signature verifies with the same team and a distinct application identifier/own Keychain group. The real helper scenario has not run. `make verify` passes 87 functional checks plus seven probe guards; two opt-in benchmarks are skipped. M1-08 configuration is validated; M1-09/M1-10/M1-14 and SEC-05 remain open.

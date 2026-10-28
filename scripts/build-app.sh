@@ -36,6 +36,6 @@ PY
 
 # Local ad-hoc signing establishes bundle integrity, not production identity
 # or permission to access app-scoped data-protection Keychain items.
-/usr/bin/codesign --force --sign - --options runtime --entitlements App/CopySaver.entitlements "$app_path"
+/usr/bin/codesign --force --sign - --options runtime --entitlements App/CopySaverPreview.entitlements "$app_path"
 /usr/bin/codesign --verify --strict "$app_path"
 printf 'Built local development app: %s\n' "$app_path"

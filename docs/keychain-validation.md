@@ -4,7 +4,7 @@ This is an operator procedure for M1-09/M1-10/M1-14 and SEC-05, not evidence tha
 
 ## Separate helper
 
-The shared `CopySaverKeychainProbe` scheme builds a separate sandboxed/hardened app, provisionally `org.copysaver.CopySaver.dev.BoundaryProbe`. It is not a dependency, embedded helper, or archive product of the CopySaver scheme. Its only explicit entitlement is App Sandbox. It uses the production Keychain adapter, but never opens a database, reads the clipboard, prints returned key bytes, or writes a key to a file.
+The shared `CopySaverKeychainProbe` scheme builds a separate sandboxed/hardened app, provisionally `org.copysaver.CopySaver.dev.BoundaryProbe`. It is not a dependency, embedded helper, or archive product of the CopySaver scheme. Its explicit entitlements are App Sandbox and its own `$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)` Keychain group. The owner uses its own distinct group; the widget requests none. It uses the production Keychain adapter, but never opens a database, reads the clipboard, prints returned key bytes, or writes a key to a file.
 
 The helper requires its running bundle and valid code-signing identifier to match the supplied development owner's identifier plus `.BoundaryProbe`, and requires a signing team. An unbundled SwiftPM executable or ad-hoc build refuses before Keychain access. The CLI accepts only owner identifiers ending in `.dev` and requires explicit confirmation that the target vault is synthetic. These guards reduce accidental misuse; they do not establish OS isolation.
 
@@ -23,7 +23,7 @@ env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-This command cannot run the authenticated probe successfully. After selecting the real team, build both schemes with development signing enabled. Inspect both resulting apps using `codesign -dvvv` and `codesign -d --entitlements :-`. Verify the expected distinct identifiers, the same real TeamIdentifier, valid signatures, sandbox/hardened-runtime configuration, and no shared Keychain or App Group entitlement. Inspect Xcode-added entitlements as well as the committed files. Do not treat a missing-entitlement failure as a passed boundary test.
+This command cannot run the authenticated probe successfully. After selecting the real team, build both schemes with development signing enabled. Inspect both resulting apps using `codesign -dvvv` and `codesign -d --entitlements :-`. Verify the expected distinct identifiers, the same real TeamIdentifier, valid signatures, sandbox/hardened-runtime configuration, and only each app’s own Keychain group, with no shared group or App Group entitlement. A profile may authorize a team-prefix wildcard; each executable must claim only its own fully expanded group. The helper must never claim the owner’s group. Inspect Xcode-added entitlements as well as the committed files. Do not treat a missing-entitlement failure as a passed boundary test.
 
 ## Manual scenario
 
