@@ -204,7 +204,10 @@ struct RecordRow: View {
                     Text(verbatim: record.displayTitle).font(.system(size: 13, weight: .medium)).lineLimit(2).multilineTextAlignment(.leading)
                     HStack(spacing: 5) {
                         Text(verbatim: record.subtitle)
-                        if case .history(let item) = record.payload { Text("·"); Text(item.lastSeenAt, style: .relative) }
+                        if case .history(let item) = record.payload {
+                            Text("·")
+                            HistoryAgeLabel(date: item.lastSeenAt)
+                        }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 if record.isSensitive { Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(.secondary) }
@@ -212,6 +215,32 @@ struct RecordRow: View {
                 .background(selected ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7))
                 .contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+private struct HistoryAgeLabel: View {
+    let date: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            Text(verbatim: label(relativeTo: context.date))
+        }
+    }
+
+    private func label(relativeTo now: Date) -> String {
+        let elapsed = max(0, now.timeIntervalSince(date))
+        guard elapsed >= 60 else { return String(localized: "Just now") }
+        let age: DateComponents
+        if elapsed < 3_600 {
+            age = DateComponents(minute: -Int(elapsed / 60))
+        } else if elapsed < 86_400 {
+            age = DateComponents(hour: -Int(elapsed / 3_600))
+        } else {
+            age = DateComponents(day: -Int(elapsed / 86_400))
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return formatter.localizedString(from: age)
     }
 }
 
