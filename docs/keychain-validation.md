@@ -4,7 +4,7 @@ This is an operator procedure for M1-09/M1-10/M1-14 and SEC-05, not evidence tha
 
 ## Separate helper
 
-The shared `CopySaverKeychainProbe` scheme builds a separate sandboxed/hardened app, provisionally `org.copysaver.CopySaver.dev.BoundaryProbe`. It is not a dependency, embedded helper, or archive product of the CopySaver scheme. Its explicit entitlements are App Sandbox and its own `$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)` Keychain group. The owner uses its own distinct group; the widget requests none. It uses the production Keychain adapter, but never opens a database, reads the clipboard, prints returned key bytes, or writes a key to a file.
+The shared `CopySaverKeychainProbe` scheme builds a separate sandboxed/hardened app, provisionally `org.copysaver.CopySaver.dev.BoundaryProbe`. It is not a dependency, embedded helper, or archive product of the CopySaver scheme. Its explicit entitlements are App Sandbox and its own `$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)` Keychain group. The owner uses its own distinct group; the widget requests none. In helper mode it uses the production Keychain adapter without opening a database or reading the clipboard. The fixed isolated-owner mode described below additionally exercises the production desktop vault service, CryptoKit and SQLite. Neither mode prints returned key bytes or writes a key to a file. Owner mode is admitted only under its fixed separate signed identity, before any file or Keychain operations.
 
 The helper requires its running bundle and valid code-signing identifier to match the supplied development owner's identifier plus `.BoundaryProbe`, and requires a signing team. An unbundled SwiftPM executable or ad-hoc build refuses before Keychain access. The CLI accepts only owner identifiers ending in `.dev` and requires explicit confirmation that the target vault is synthetic. These guards reduce accidental misuse; they do not establish OS isolation.
 
@@ -50,6 +50,65 @@ The helper never deletes an existing control automatically after a duplicate-ite
 
 Cleanup addresses only the helper's fixed synthetic account under its own service. It never deletes an owner-app key or vault. A crash may leave that control in Keychain until cleanup; no automatic orphan-key deletion is performed.
 
+## Isolated owner for a development app already in use
+
+Once the ordinary development app contains personal clipboard history, do not use that vault for this procedure. The same test-only target can be built twice with distinct identities: an isolated synthetic owner and its separate helper. Neither is embedded in CopySaver or the widget. Owner mode uses a fixed namespace, fixed location within its own sandbox, and fixed fictional content; callers cannot supply another vault path, content or owner identity. It never captures the clipboard.
+
+Build both from the current sources with your real development team, replacing `YOUR_TEAM_ID`. Keep the build products in separate directories:
+
+```sh
+env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -project CopySaver.xcodeproj -scheme CopySaverKeychainProbe -configuration Release \
+  -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/isolated-keychain-owner \
+  DEVELOPMENT_TEAM=YOUR_TEAM_ID CODE_SIGN_IDENTITY='Apple Development' \
+  PRODUCT_BUNDLE_IDENTIFIER=org.copysaver.CopySaver.SecurityFixture.dev \
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO -allowProvisioningUpdates build
+env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -project CopySaver.xcodeproj -scheme CopySaverKeychainProbe -configuration Release \
+  -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/isolated-keychain-helper \
+  DEVELOPMENT_TEAM=YOUR_TEAM_ID CODE_SIGN_IDENTITY='Apple Development' \
+  PRODUCT_BUNDLE_IDENTIFIER=org.copysaver.CopySaver.SecurityFixture.dev.BoundaryProbe \
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO -allowProvisioningUpdates build
+```
+
+Audit both emitted signatures, profiles and entitlements as above. In addition, require no `com.apple.security.get-task-allow`: Xcode can inject that entitlement even in a Release build using an Apple Development identity, hence the explicit base-entitlement setting. Check the final emitted entitlements instead of assuming the build setting removed it. These remain development-certificate fixtures, not Developer ID release validation.
+
+Run the owner from its built bundle executable, completing its system authentication locally:
+
+```sh
+.build/isolated-keychain-owner/Build/Products/Release/CopySaverKeychainProbe.app/Contents/MacOS/CopySaverKeychainProbe \
+  --owner-fixture create --confirm-synthetic-vault
+.build/isolated-keychain-owner/Build/Products/Release/CopySaverKeychainProbe.app/Contents/MacOS/CopySaverKeychainProbe \
+  --owner-fixture verify --confirm-synthetic-vault
+```
+
+Creation is add-only and refuses an existing fixture. Successful create authenticates, saves fictional text through the production service, locks and verifies writes are denied. Verify starts a fresh process, authenticates, checks the exact saved UTF-8 body and fixed title/category with capture disabled, locks and checks denied writes. Both success messages are static and contain no keys or vault metadata. An interrupted or unexpected fixture is preserved for diagnosis.
+
+Read only the vault UUID from this fixed fixture's header. The expected path is `~/Library/Containers/org.copysaver.CopySaver.SecurityFixture.dev/Data/Library/Application Support/SyntheticKeychainValidation/vault.sqlite`. Follow the manual helper scenario above, substituting the isolated owner identifier and its matching helper executable:
+
+```sh
+.build/isolated-keychain-helper/Build/Products/Release/CopySaverKeychainProbe.app/Contents/MacOS/CopySaverKeychainProbe \
+  --owner-bundle-id org.copysaver.CopySaver.SecurityFixture.dev \
+  --synthetic-vault-id YOUR_SYNTHETIC_VAULT_UUID --confirm-synthetic-vault
+```
+
+Complete only the two helper-own-control authentication requests. An unexpected target access request is inconclusive/failure; do not approve it. Then run owner `verify` again against the same fixture to exclude an absent-key false positive. For a separate cancellation test, run owner `--owner-fixture cancel --confirm-synthetic-vault` and choose Cancel in the system prompt. Only a cancellation with denied subsequent writes passes that test; verify again afterward to confirm saved data survived. Password fallback requires an actual owner authentication through the password option, recorded separately.
+
+Explicit cleanup, after all probe processes exit, requires both confirmations and authentication. It accepts only the expected synthetic records (or the unseeded settings-only fixture after interrupted creation), then uses the production reset flow, including fresh authentication, to remove its own vault and key:
+
+```sh
+.build/isolated-keychain-owner/Build/Products/Release/CopySaverKeychainProbe.app/Contents/MacOS/CopySaverKeychainProbe \
+  --owner-fixture cleanup --confirm-synthetic-vault --confirm-delete-fixture
+```
+
+Never reset the ordinary clipboard-history app to prepare or clean up this fixture. An unexpected/corrupt fixture fails closed and is preserved rather than guessed at or silently replaced.
+
 ## Automated limits
 
-`make verify` compiles the fixture and runs seven admission checks against the unbundled executable: help, malformed arguments, production namespace rejection, missing synthetic confirmation, malformed UUID, unsigned probe refusal, and unsigned cleanup refusal. These checks never call Keychain, authenticate, or touch a clipboard/vault. Static checks keep the helper out of the product build/embed graph. The signed integration scenario remains a separate manual gate.
+`make verify` compiles the fixture and runs 15 admission checks against the unbundled executable: help, malformed arguments, production namespace rejection, missing synthetic confirmation, malformed UUID, unsigned probe refusal, unsigned cleanup refusal, owner-mode unsigned refusals, missing confirmations, unknown actions and extra-path rejection. The guard script refuses `.app` bundle paths before launching anything, preventing accidental owner fixture operations during a nominally non-Keychain check. These checks never call Keychain, authenticate, or touch a clipboard/vault. Static checks keep the helper out of the product build/embed graph. The signed integration scenario remains a separate manual gate.
+
+## Isolated fixture evidence, October 28, 2026
+
+Universal Release owner/helper builds pass with real Apple Development profiles. Audit verifies the same team, distinct application identifiers, exactly one own-bundle Keychain group apiece, sandbox/hardened runtime, and absence of debugger/network/shared-group entitlements. Initial Release signing injected `get-task-allow`; rebuilding with the explicit base-entitlement setting removed it, confirmed in the final signatures. These are development-signed fixtures, not a notarized product.
+
+On Apple silicon macOS 26.6.2, owner create/authenticate/save/lock and a fresh-process authenticated exact-text verification pass, including denied writes after locking. A read-only scan finds exactly three encrypted rows and no body/title/category canaries in database/WAL/SHM. The 15 unbundled admission guards and a separate guard-runner bundle refusal pass without Keychain access. Both signed executables also reject the opposite role before fixture operations. `make verify` passes 87 functional checks with two benchmarks skipped. The helper is running and awaits its own-control authentication; target denial and successful owner-after verification remain pending. The password-fallback method has not yet been confirmed. SEC-05 and M1-10 remain unchecked.

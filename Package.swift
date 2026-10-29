@@ -18,7 +18,7 @@ let package = Package(
     targets: [
         .target(name: "CopySaverDomain"),
         .executableTarget(name: "CopySaverCrashProbe", dependencies: ["CopySaverDomain", "CopySaverVault"], path: "TestsSupport/CrashProbe"),
-        .executableTarget(name: "CopySaverKeychainProbe", dependencies: ["CopySaverPlatform"], path: "TestsSupport/KeychainProbe", exclude: ["Info.plist", "CopySaverKeychainProbe.entitlements"]),
+        .executableTarget(name: "CopySaverKeychainProbe", dependencies: ["CopySaverPlatform", "CopySaverDomain", "CopySaverVault"], path: "TestsSupport/KeychainProbe", exclude: ["Info.plist", "CopySaverKeychainProbe.entitlements"]),
         .target(name: "CopySaverWidgets"),
         .executableTarget(name: "CopySaverWidgetCheck", dependencies: ["CopySaverWidgets"], path: "Widget", exclude: ["Info.plist", "CopySaverWidget.entitlements"]),
         .testTarget(name: "CopySaverWidgetsTests", dependencies: ["CopySaverWidgets", "CopySaverPlatform"]),

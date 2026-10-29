@@ -1,5 +1,7 @@
 import AppKit
+import CopySaverDomain
 import CopySaverPlatform
+import CopySaverVault
 import CryptoKit
 import Foundation
 import Security
@@ -21,12 +23,23 @@ import Security
             Manual signed probe; use only a confirmed synthetic development vault.
             --owner-bundle-id ID.dev --synthetic-vault-id UUID --confirm-synthetic-vault
             --owner-bundle-id ID.dev --cleanup-control
+            --owner-fixture {create|verify|cancel} --confirm-synthetic-vault
+            --owner-fixture cleanup --confirm-synthetic-vault --confirm-delete-fixture
             Requires a separately signed ID.dev.BoundaryProbe app. No keys are printed or written to files.
+            Owner fixture commands require the fixed isolated SecurityFixture.dev signed identity.
             The owner app must successfully unlock the same fixture before AND after this probe.
             """)
             return
         }
         do {
+            if arguments.first == "--owner-fixture" {
+                guard let action = try? SyntheticOwnerFixture.action(arguments) else { throw ProbeFailure.invalidArguments }
+                try requireSignedIdentity(SyntheticOwnerFixture.identifier)
+                NSApplication.shared.setActivationPolicy(.accessory)
+                NSApplication.shared.activate()
+                try await SyntheticOwnerFixture.run(action)
+                return
+            }
             let options = try parse(arguments)
             let helperID = options.owner + ".BoundaryProbe"
             try requireSignedIdentity(helperID)
@@ -126,5 +139,89 @@ import Security
     private static func verifyControl(_ helper: KeychainVaultKeyProvider, sealed: AES.GCM.SealedBox) async throws {
         let loaded = try await helper.loadKey(for: controlID)
         guard try AES.GCM.open(sealed, using: loaded) == canary else { throw ProbeFailure.invalidControl }
+    }
+}
+
+/// Fixed synthetic owner, compiled only into the manual fixture executable.
+/// Its identity, location and data cannot be supplied by command-line callers.
+private enum SyntheticOwnerFixture {
+    static let identifier = "org.copysaver.CopySaver.SecurityFixture.dev"
+    private static let recordID = UUID(uuidString: "A7D875F7-E8B2-4DD0-97AF-2DF1C1A4C106")!
+    private static let title = "Synthetic isolation fixture"
+    private static let body = "CopySaver isolated owner canary v1\n  café 日本語  \n"
+
+    enum Action: String { case create, verify, cancel, cleanup }
+    private enum Failure: Error { case invalidArguments, unexpectedFixture, expectedCancellation, mutationAdmitted }
+
+    static func action(_ arguments: [String]) throws -> Action {
+        guard arguments.count >= 3, arguments[0] == "--owner-fixture",
+              let action = Action(rawValue: arguments[1]), arguments[2] == "--confirm-synthetic-vault",
+              arguments.count == (action == .cleanup ? 4 : 3)
+        else { throw Failure.invalidArguments }
+        if action == .cleanup, arguments[3] != "--confirm-delete-fixture" { throw Failure.invalidArguments }
+        return action
+    }
+
+    static func run(_ action: Action) async throws {
+        let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                                 appropriateFor: nil, create: true)
+        let location = support.appendingPathComponent("SyntheticKeychainValidation", isDirectory: true)
+            .appendingPathComponent("vault.sqlite")
+        let keys = try KeychainVaultKeyProvider(bundleIdentifier: identifier)
+        let service = DesktopVaultService(url: location, keys: keys)
+        let exists = try await service.prepare()
+        if action == .create {
+            guard !exists else { throw Failure.unexpectedFixture }
+            try await service.create()
+            let records = try await service.unlock()
+            guard records.allSatisfy({ if case .settings = $0.payload { return true }; return false })
+            else { await service.lock(); throw Failure.unexpectedFixture }
+            let instant = Date(timeIntervalSince1970: 1_700_000_000)
+            let snippet = try Snippet(id: recordID, name: title, body: body, category: "Synthetic",
+                                      isSensitive: false, createdAt: instant, updatedAt: instant)
+            _ = try await service.save(VaultRecord(.snippet(snippet)))
+            await service.lock()
+            try await requireMutationDenied(service)
+            print("Synthetic owner created, authenticated and saved; locked writes denied.")
+            return
+        }
+        guard exists else { throw Failure.unexpectedFixture }
+        if action == .cancel {
+            do {
+                _ = try await service.unlock()
+                await service.lock()
+                throw Failure.expectedCancellation
+            } catch KeychainFailure.cancelled {
+                try await requireMutationDenied(service)
+                print("Cancelled owner authentication preserved locked write admission.")
+                return
+            }
+        }
+        let records = try await service.unlock()
+        let hasExpectedSnippet = records.count == 2 && records.contains(where: { record in
+            guard case .snippet(let snippet) = record.payload else { return false }
+            return snippet.id == recordID && snippet.name == title &&
+                Array(snippet.body.utf8) == Array(body.utf8) && snippet.category == "Synthetic" && !snippet.isSensitive
+        })
+        let unseeded = records.count == 1 && records.allSatisfy({ if case .settings = $0.payload { return true }; return false })
+        guard hasExpectedSnippet || (action == .cleanup && unseeded),
+              try !HistoryPolicy.settings(in: records).captureEnabled
+        else { await service.lock(); throw Failure.unexpectedFixture }
+        if action == .cleanup {
+            // Only the fixed, authenticated synthetic fixture can reach reset.
+            try await service.reset()
+            print("Synthetic owner fixture removed. No clipboard-history app data was accessed.")
+        } else {
+            await service.lock()
+            try await requireMutationDenied(service)
+            print("Synthetic owner authenticated and exact saved text verified; locked writes denied.")
+        }
+    }
+
+    private static func requireMutationDenied(_ service: DesktopVaultService) async throws {
+        do {
+            _ = try await service.delete(recordID)
+            throw Failure.mutationAdmitted
+        } catch VaultError.locked { }
     }
 }
