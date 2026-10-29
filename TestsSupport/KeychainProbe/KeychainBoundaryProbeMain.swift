@@ -4,7 +4,10 @@ import CopySaverPlatform
 import CopySaverVault
 import CryptoKit
 import Foundation
+import LocalAuthentication
 import Security
+
+private enum PresenceFailure: Error { case readableWithoutInteraction, inconclusive }
 
 /// Manual, separately signed integration fixture. Never embedded in CopySaver.
 @main struct KeychainBoundaryProbe {
@@ -23,8 +26,9 @@ import Security
             Manual signed probe; use only a confirmed synthetic development vault.
             --owner-bundle-id ID.dev --synthetic-vault-id UUID --confirm-synthetic-vault
             --owner-bundle-id ID.dev --cleanup-control
-            --owner-fixture {create|verify|cancel} --confirm-synthetic-vault
+            --owner-fixture {create|verify|cancel|noninteractive} --confirm-synthetic-vault
             --owner-fixture cleanup --confirm-synthetic-vault --confirm-delete-fixture
+            --owner-fixture missing-key --confirm-synthetic-vault --confirm-delete-fixture
             Requires a separately signed ID.dev.BoundaryProbe app. No keys are printed or written to files.
             Owner fixture commands require the fixed isolated SecurityFixture.dev signed identity.
             The owner app must successfully unlock the same fixture before AND after this probe.
@@ -69,6 +73,10 @@ import Security
                 message = "INCONCLUSIVE: helper positive control failed."
             case ProbeFailure.cleanupFailed:
                 message = "INCONCLUSIVE: helper control cleanup failed; retry --cleanup-control before another probe."
+            case PresenceFailure.readableWithoutInteraction:
+                message = "FAIL: a protected synthetic fixture key was readable with authentication UI forbidden."
+            case PresenceFailure.inconclusive:
+                message = "INCONCLUSIVE: the UI-forbidden read did not produce the required interaction denial."
             case KeychainFailure.duplicateKey:
                 message = "INCONCLUSIVE: a helper control already exists. Finish any active probe before explicit cleanup."
             case KeychainFailure.missingEntitlement:
@@ -116,6 +124,9 @@ import Security
         var failure: (any Error)?
         do {
             let sealed = try AES.GCM.seal(canary, using: created)
+            let control = try KeychainIdentity(bundleIdentifier: helper.bundleIdentifier, vaultID: controlID)
+            try await ProtectedReadProbe.requireInteraction(for: control)
+            FileHandle.standardError.write(Data("Reading protected helper control (1 of 2).\n".utf8))
             try await verifyControl(helper, sealed: sealed)
             let target = try KeychainVaultKeyProvider(bundleIdentifier: owner)
             do {
@@ -125,6 +136,8 @@ import Security
                 // Only item-not-found is an expected isolation observation. Cancellation,
                 // missing entitlements and all other errors make the probe inconclusive.
             }
+            try await ProtectedReadProbe.requireInteraction(for: control)
+            FileHandle.standardError.write(Data("Target was not visible. Reading protected helper control (2 of 2).\n".utf8))
             try await verifyControl(helper, sealed: sealed)
         } catch { failure = error }
         do { try await helper.deleteKey(for: controlID) }
@@ -150,15 +163,22 @@ private enum SyntheticOwnerFixture {
     private static let title = "Synthetic isolation fixture"
     private static let body = "CopySaver isolated owner canary v1\n  café 日本語  \n"
 
-    enum Action: String { case create, verify, cancel, cleanup }
-    private enum Failure: Error { case invalidArguments, unexpectedFixture, expectedCancellation, mutationAdmitted }
+    enum Action: String {
+        case create, verify, cancel, noninteractive, cleanup
+        case missingKey = "missing-key"
+    }
+    private enum Failure: Error {
+        case invalidArguments, unexpectedFixture, expectedCancellation, mutationAdmitted
+        case expectedMissingKey, fixtureChanged
+    }
 
     static func action(_ arguments: [String]) throws -> Action {
         guard arguments.count >= 3, arguments[0] == "--owner-fixture",
-              let action = Action(rawValue: arguments[1]), arguments[2] == "--confirm-synthetic-vault",
-              arguments.count == (action == .cleanup ? 4 : 3)
+              let action = Action(rawValue: arguments[1]), arguments[2] == "--confirm-synthetic-vault"
         else { throw Failure.invalidArguments }
-        if action == .cleanup, arguments[3] != "--confirm-delete-fixture" { throw Failure.invalidArguments }
+        let destructive = action == .cleanup || action == .missingKey
+        guard arguments.count == (destructive ? 4 : 3) else { throw Failure.invalidArguments }
+        if destructive, arguments[3] != "--confirm-delete-fixture" { throw Failure.invalidArguments }
         return action
     }
 
@@ -186,6 +206,15 @@ private enum SyntheticOwnerFixture {
             return
         }
         guard exists else { throw Failure.unexpectedFixture }
+        let header = try VaultSession.open(at: location)
+        let vaultID = await header.vaultID
+        try await header.close()
+        if action != .cleanup {
+            try await ProtectedReadProbe.requireInteraction(for: KeychainIdentity(bundleIdentifier: identifier, vaultID: vaultID))
+            try await requireMutationDenied(service)
+            if action == .noninteractive { return }
+            FileHandle.standardError.write(Data("Starting a fresh interactive owner authentication request.\n".utf8))
+        }
         if action == .cancel {
             do {
                 _ = try await service.unlock()
@@ -207,7 +236,33 @@ private enum SyntheticOwnerFixture {
         guard hasExpectedSnippet || (action == .cleanup && unseeded),
               try !HistoryPolicy.settings(in: records).captureEnabled
         else { await service.lock(); throw Failure.unexpectedFixture }
-        if action == .cleanup {
+        if action == .missingKey {
+            // The key is removed only after authenticating and checking the fixed canary.
+            await service.lock()
+            let files = ["", "-wal", "-shm"].map { URL(filePath: location.path + $0) }
+            let snapshots = try files.map { file -> Data? in
+                FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
+            }
+            try await keys.deleteKey(for: vaultID)
+            do {
+                _ = try await service.unlock()
+                await service.lock()
+                throw Failure.expectedMissingKey
+            } catch KeychainFailure.missingKey { }
+            try await requireMutationDenied(service)
+            for (file, expected) in zip(files, snapshots) {
+                let actual = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
+                guard actual == expected else { throw Failure.fixtureChanged }
+            }
+            do {
+                _ = try await keys.loadKey(for: vaultID)
+                throw Failure.expectedMissingKey
+            } catch KeychainFailure.missingKey { }
+            print("Missing key refused unlock, preserved exact fixture files and admitted no writes or replacement key.")
+            // Explicitly confirmed cleanup follows the preservation check, never a fallback.
+            try await service.reset()
+            print("Synthetic missing-key fixture cleanup completed.")
+        } else if action == .cleanup {
             // Only the fixed, authenticated synthetic fixture can reach reset.
             try await service.reset()
             print("Synthetic owner fixture removed. No clipboard-history app data was accessed.")
@@ -223,5 +278,33 @@ private enum SyntheticOwnerFixture {
             _ = try await service.delete(recordID)
             throw Failure.mutationAdmitted
         } catch VaultError.locked { }
+    }
+}
+
+private enum ProtectedReadProbe {
+    /// Negative OS control used only for each signed fixture's own protected key.
+    /// Only interaction denial passes; missing keys/entitlements are inconclusive.
+    static func requireInteraction(for identity: KeychainIdentity) async throws {
+        let status = await Task.detached(priority: .userInitiated) {
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            context.touchIDAuthenticationAllowableReuseDuration = 0
+            defer { context.invalidate() }
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: identity.service,
+                kSecAttrAccount as String: identity.account,
+                kSecUseDataProtectionKeychain as String: true,
+                kSecAttrSynchronizable as String: false,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+                kSecReturnData as String: true,
+                kSecUseAuthenticationContext as String: context,
+            ]
+            var result: CFTypeRef?
+            return SecItemCopyMatching(query as CFDictionary, &result)
+        }.value
+        if status == errSecSuccess { throw PresenceFailure.readableWithoutInteraction }
+        guard status == errSecInteractionNotAllowed else { throw PresenceFailure.inconclusive }
+        FileHandle.standardError.write(Data("UI-forbidden protected read refused: interaction required.\n".utf8))
     }
 }

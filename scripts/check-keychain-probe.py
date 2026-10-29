@@ -5,7 +5,14 @@ import sys
 from pathlib import Path
 
 binary = Path(sys.argv[1]).resolve(strict=True)
-assert not any(part.endswith(".app") for part in binary.parts), "Admission checks require an unbundled executable; never run them on a signed owner fixture"
+if any(part.lower().endswith(".app") for part in binary.parts):
+    raise SystemExit("Admission checks require an unbundled executable; never run them on a signed owner fixture")
+signature = subprocess.run(["codesign", "-dv", str(binary)], capture_output=True, text=True, timeout=10)
+if signature.returncode == 0:
+    if "Signature=adhoc" not in signature.stderr or "TeamIdentifier=not set" not in signature.stderr:
+        raise SystemExit("Admission checks refuse certificate-signed executables before launching them")
+elif "code object is not signed at all" not in signature.stderr:
+    raise SystemExit("Unable to establish an unsigned/ad-hoc admission fixture; executable was not launched")
 owner = ["--owner-bundle-id", "org.copysaver.CopySaver.dev"]
 fixture = ["--synthetic-vault-id", "0DDAB6CE-C530-4371-A611-D986E68B0D53"]
 cases = [
@@ -19,6 +26,9 @@ cases = [
     (["--owner-fixture", "create", "--confirm-synthetic-vault"], 1, "valid development-signed helper app"),
     (["--owner-fixture", "verify", "--confirm-synthetic-vault"], 1, "valid development-signed helper app"),
     (["--owner-fixture", "cancel", "--confirm-synthetic-vault"], 1, "valid development-signed helper app"),
+    (["--owner-fixture", "noninteractive", "--confirm-synthetic-vault"], 1, "valid development-signed helper app"),
+    (["--owner-fixture", "missing-key", "--confirm-synthetic-vault", "--confirm-delete-fixture"], 1, "valid development-signed helper app"),
+    (["--owner-fixture", "missing-key", "--confirm-synthetic-vault"], 1, "Invalid arguments"),
     (["--owner-fixture", "cleanup", "--confirm-synthetic-vault", "--confirm-delete-fixture"], 1, "valid development-signed helper app"),
     (["--owner-fixture", "create"], 1, "Invalid arguments"),
     (["--owner-fixture", "cleanup", "--confirm-synthetic-vault"], 1, "Invalid arguments"),

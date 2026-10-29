@@ -1,6 +1,6 @@
 # Signed Keychain boundary validation
 
-This is an operator procedure for M1-09/M1-10/M1-14 and SEC-05, not evidence that those gates pass. It needs a real Apple development identity, the device owner's authentication, and a confirmed synthetic development vault. Do not run against a production vault or real saved content. No credentials or keys belong in the repository or evidence.
+These operator procedures and recorded results cover M1-09/M1-10/M1-14 and SEC-05. Verified outcomes are limited to the configurations and scenarios recorded below. Running the procedures requires a real Apple development identity, the device owner's authentication, and a confirmed synthetic development vault. Do not run against a production vault or real saved content. No credentials or keys belong in the repository or evidence.
 
 ## Separate helper
 
@@ -82,7 +82,7 @@ Run the owner from its built bundle executable, completing its system authentica
   --owner-fixture verify --confirm-synthetic-vault
 ```
 
-Creation is add-only and refuses an existing fixture. Successful create authenticates, saves fictional text through the production service, locks and verifies writes are denied. Verify starts a fresh process, authenticates, checks the exact saved UTF-8 body and fixed title/category with capture disabled, locks and checks denied writes. Both success messages are static and contain no keys or vault metadata. An interrupted or unexpected fixture is preserved for diagnosis.
+Creation is add-only and refuses an existing fixture. Successful create authenticates, saves fictional text through the production service, locks and verifies writes are denied. Verify starts a fresh process, first requires a fresh UI-forbidden protected read to return `errSecInteractionNotAllowed`, then authenticates interactively and checks the exact saved UTF-8 body and fixed title/category with capture disabled, locks and checks denied writes. Both success messages are static and contain no keys or vault metadata. An interrupted or unexpected fixture is preserved for diagnosis.
 
 Read only the vault UUID from this fixed fixture's header. The expected path is `~/Library/Containers/org.copysaver.CopySaver.SecurityFixture.dev/Data/Library/Application Support/SyntheticKeychainValidation/vault.sqlite`. Follow the manual helper scenario above, substituting the isolated owner identifier and its matching helper executable:
 
@@ -92,7 +92,7 @@ Read only the vault UUID from this fixed fixture's header. The expected path is 
   --synthetic-vault-id YOUR_SYNTHETIC_VAULT_UUID --confirm-synthetic-vault
 ```
 
-Complete only the two helper-own-control authentication requests. An unexpected target access request is inconclusive/failure; do not approve it. Then run owner `verify` again against the same fixture to exclude an absent-key false positive. For a separate cancellation test, run owner `--owner-fixture cancel --confirm-synthetic-vault` and choose Cancel in the system prompt. Only a cancellation with denied subsequent writes passes that test; verify again afterward to confirm saved data survived. Password fallback requires an actual owner authentication through the password option, recorded separately.
+The helper emits static progress before each own-control read. It also requires a UI-forbidden read to fail with interaction-required before both authenticated control reads, including after the first authentication. Complete only the two helper-own-control authentication requests. An unexpected target access request is inconclusive/failure; do not approve it. Then run owner `verify` again against the same fixture to exclude an absent-key false positive. A standalone owner `--owner-fixture noninteractive --confirm-synthetic-vault` runs only the UI-forbidden negative control and checks that writes remain locked. It never asks for authentication. Missing items, missing entitlements and any status other than interaction-required are inconclusive; a successful read explicitly fails. For a separate cancellation test, run owner `--owner-fixture cancel --confirm-synthetic-vault` and choose Cancel in the system prompt. Only a cancellation with denied subsequent writes passes that test; verify again afterward to confirm saved data survived. Password fallback requires an actual owner authentication through the password option, recorded separately. Authenticating in the `cancel` test makes that test inconclusive; it is not evidence that cancellation was exercised.
 
 Explicit cleanup, after all probe processes exit, requires both confirmations and authentication. It accepts only the expected synthetic records (or the unseeded settings-only fixture after interrupted creation), then uses the production reset flow, including fresh authentication, to remove its own vault and key:
 
@@ -101,14 +101,35 @@ Explicit cleanup, after all probe processes exit, requires both confirmations an
   --owner-fixture cleanup --confirm-synthetic-vault --confirm-delete-fixture
 ```
 
+The final destructive missing-key scenario is also restricted to this fixed owner and requires both confirmations. It first denies a UI-forbidden read, authenticates and verifies the synthetic canary, locks, snapshots the exact database/WAL/SHM bytes, then deletes only that fixture’s key. It requires missing-key unlock failure, denied writes, unchanged file bytes and a second missing-key read proving no replacement was generated. Only after those checks does explicitly confirmed fixture cleanup use the production reset path. Any earlier failure preserves remaining files for diagnosis.
+
+```sh
+.build/isolated-keychain-owner/Build/Products/Release/CopySaverKeychainProbe.app/Contents/MacOS/CopySaverKeychainProbe \
+  --owner-fixture missing-key --confirm-synthetic-vault --confirm-delete-fixture
+```
+
 Never reset the ordinary clipboard-history app to prepare or clean up this fixture. An unexpected/corrupt fixture fails closed and is preserved rather than guessed at or silently replaced.
 
 ## Automated limits
 
-`make verify` compiles the fixture and runs 15 admission checks against the unbundled executable: help, malformed arguments, production namespace rejection, missing synthetic confirmation, malformed UUID, unsigned probe refusal, unsigned cleanup refusal, owner-mode unsigned refusals, missing confirmations, unknown actions and extra-path rejection. The guard script refuses `.app` bundle paths before launching anything, preventing accidental owner fixture operations during a nominally non-Keychain check. These checks never call Keychain, authenticate, or touch a clipboard/vault. Static checks keep the helper out of the product build/embed graph. The signed integration scenario remains a separate manual gate.
+`make verify` compiles the fixture and runs 18 admission checks against the unbundled executable: help, malformed arguments, production namespace rejection, missing synthetic confirmation, malformed UUID, unsigned probe refusal, unsigned cleanup refusal, owner-mode unsigned refusals (including the UI-forbidden action), missing confirmations, unknown actions and extra-path rejection. The guard script refuses `.app` bundle paths and certificate-signed executables before launching anything, including under optimized Python, preventing accidental owner fixture operations during a nominally non-Keychain check. These checks never call Keychain, authenticate, or touch a clipboard/vault. Static checks keep the helper out of the product build/embed graph. The signed integration scenario remains a separate manual gate.
 
 ## Isolated fixture evidence, October 28, 2026
 
 Universal Release owner/helper builds pass with real Apple Development profiles. Audit verifies the same team, distinct application identifiers, exactly one own-bundle Keychain group apiece, sandbox/hardened runtime, and absence of debugger/network/shared-group entitlements. Initial Release signing injected `get-task-allow`; rebuilding with the explicit base-entitlement setting removed it, confirmed in the final signatures. These are development-signed fixtures, not a notarized product.
 
 On Apple silicon macOS 26.6.2, owner create/authenticate/save/lock and a fresh-process authenticated exact-text verification pass, including denied writes after locking. A read-only scan finds exactly three encrypted rows and no body/title/category canaries in database/WAL/SHM. The 15 unbundled admission guards and a separate guard-runner bundle refusal pass without Keychain access. Both signed executables also reject the opposite role before fixture operations. `make verify` passes 87 functional checks with two benchmarks skipped. The helper is running and awaits its own-control authentication; target denial and successful owner-after verification remain pending. The password-fallback method has not yet been confirmed. SEC-05 and M1-10 remain unchecked.
+
+## User-presence negative control, October 29, 2026
+
+Inspection found the earlier helper completed its controls, received item-not-found for the owner target, and removed its control. The user reported no prompt or failed authentication for that stage, so that log is not treated as proof that its prompts were visibly presented. The owner-after process subsequently authenticated and verified the exact fixture; the user confirms Touch ID.
+
+The strengthened fixture queries each own protected key with a fresh `LAContext`, `interactionNotAllowed = true` and reuse disabled. Only `errSecInteractionNotAllowed` passes; successful access fails, and missing keys, entitlement failures and all other statuses are inconclusive. Native owner negative controls pass. The strengthened helper repeat also passes both UI-forbidden refusals (including after its first authentication), both authenticated production-provider controls, owner-target item-not-found and control cleanup. The user confirms completing both prompts for this repeat. These results establish the recorded signed identity-isolation/user-presence scenario on the reference Mac; they do not explain the earlier missing-prompt observation.
+
+The final owner `missing-key` run first passed its UI-forbidden check and authenticated exact-canary verification, providing the owner-after check for the helper repeat. It then removed only the synthetic owner key, required missing-key unlock failure and locked write admission, compared unchanged database/WAL/SHM bytes, and confirmed no replacement key existed. Explicit synthetic reset followed only after those checks; an external existence check confirms the fixture database and sidecars were removed. Personal clipboard-history data was never opened or reset.
+
+Universal Release builds and both-architecture signature/profile/own-group entitlement audits pass without debugger/network/shared-group entitlements. The guard runner rejects signed bundles and copied certificate-signed executables before launch, including under Python optimization. `make verify` passes 87 functional checks and 18 admission guards (two benchmarks skipped). M1-10 and SEC-05 pass for these reference-Mac scenarios. This does not complete Developer ID distribution, minimum-OS/Intel execution, copied-vault/fresh-install, lifecycle, or sensitive-UI acceptance.
+
+Cancellation remains unverified: the user authenticated instead of choosing Cancel, and that particular test correctly returned inconclusive. Confirmed owner reads used Touch ID; the final run’s password-fallback method has not been confirmed, so password fallback remains unverified. The production Keychain transport/authentication policy is unchanged; all new controls belong to the manual fixture.
+
+The negative-control API follows Apple’s [interactionNotAllowed property](https://developer.apple.com/documentation/localauthentication/lacontext/interactionnotallowed). Apple’s [Keychain UI-failure documentation](https://developer.apple.com/documentation/security/ksecuseauthenticationuifail) specifies interaction-required when authentication is needed and directs new code to that context property. [Authentication context reuse](https://developer.apple.com/documentation/security/ksecuseauthenticationcontext) is separate from proving that a prompt was visibly shown.
