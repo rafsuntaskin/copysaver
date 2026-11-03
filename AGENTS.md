@@ -19,8 +19,8 @@ Read [spec.md](spec.md), its delivery checklist and progress log, [CONTRIBUTING.
 ## Security requirements
 
 - Encrypt complete record payloads before handing them to SQLite. Use CryptoKit AES-256-GCM, fresh nonces, and authenticated vault/record/version identity as specified.
-- Keep the vault key in the device-only, app-scoped data protection Keychain with user presence. Never use a file-stored key, hardcoded key, or plaintext fallback.
-- Start locked. Locking stops capture, closes write admission, invalidates pending work, clears owned sensitive clipboard content, and releases decrypted state. Missing keys and authentication/decryption failures must preserve the vault and fail closed.
+- Default community builds use the macOS login Keychain with a caller-only ACL and automatic open/resume, as the user requested on November 3, 2026. Protected compatibility builds retain device-only data-protection Keychain user presence. Never use a file-stored key, hardcoded key, broad trusted-app list or plaintext fallback, or silently migrate existing protected vaults.
+- New community vaults capture automatically after OS clipboard approval; respect saved pause/disable choices. Suspend closes capture/write admission, invalidates pending work, clears owned sensitive clipboard content and decrypted state; corresponding return events resume automatically. Explicit Hide and pause remains until explicit resume. Protected builds start locked. Missing keys and authentication/decryption failures preserve the vault and fail closed.
 - Exclude concealed/transient/generated clipboard types and app-owned writes. Treat source attribution, secret heuristics, and application exclusions as best-effort privacy controls.
 - Keep secrets, queries, titles, previews, content hashes, and user-derived metadata out of logs, preferences, widget state, URLs, fixtures, and diagnostics. Use only synthetic data in tests and screenshots.
 - Sensitive reveal/copy/edit operations require fresh authentication. Masking includes VoiceOver and other accessibility output.
@@ -61,7 +61,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for examples and integration details.
 - Test meaningful behavior and regressions: round trips/tampering, exact text preservation, duplicate/retention limits, denied authentication, write failures, self-copy suppression, and lock races. Do not add tests that only mirror the implementation or meaningless tests for documentation edits.
 - Run targeted tests first, then the relevant complete suite once. Broaden/repeat only when changes or unresolved failures justify it.
 - Never modify system developer frameworks or accept licenses to unblock a repository test. Use the documented process-scoped Command Line Tools fallback where appropriate.
-- Do not add a local fallback that bypasses authentication, weakens encryption, grants broad entitlements, or silently swallows a security failure.
+- Do not add an implicit fallback that bypasses the selected protection profile, weakens encryption, grants broad entitlements, or silently swallows a security failure. The explicitly selected community profile is a distinct release policy, not an authentication-error fallback. Retain App Sandbox/hardened runtime and never claim app exclusivity against a compromised account.
 - Review UI in light/dark appearance and keyboard/VoiceOver use. The selected screenshots are layout references, not proof of implemented interactions, accessibility, or security.
 
 ## Handoff

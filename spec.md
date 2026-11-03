@@ -105,8 +105,17 @@ Native/signed integration (check each task only after its own validation):
 
 ### Progress log
 
+New community-profile work (November 3, 2026), from `main` at `8dbb932` on `feat/automatic-capture`:
+
+- [ ] **AUTO-01** Implement login-Keychain key storage and automatic create/open with no Apple-issued certificate; retain AES-GCM and fail-closed missing-key/tamper behavior. Prove with an isolated ad-hoc app fixture, not a production vault.
+- [ ] **AUTO-02** Enable capture for new community vaults automatically, respect saved disable/pause choices, rebaseline on startup/resume, and resume after sleep/session activation without repeated authentication. Test lifecycle races and manual hide/pause behavior.
+- [ ] **AUTO-03** Build a certificate-free DMG, audit its identity/entitlements, document first-run/update approval and security limits, and preserve existing protected vaults. Native installation, minimum-OS/Intel and widget discovery remain independent gates.
+
+These replace the community profile's earlier mandatory user-presence/start-locked/explicit-enable/notarized-release requirements (M1-09/M1-10, M2-09, M4-08/M4-10, FUNC-01/FUNC-09, SEC-05/SEC-06/SEC-11, REL-03/REL-04). Keep historical evidence and IDs; none of it proves the new profile. Remaining encryption, integrity, permission, sensitive-UI and accessibility gates still apply. The current requirement is automatic access to encrypted storage, not app-exclusive access against a compromised user account.
+
 | Date | Change / IDs | Validation / evidence | Blockers / next action |
 | --- | --- | --- | --- |
+| 2026-11-03 | AUTO-01–AUTO-03 planned; user authorizes automatic community vault and ad-hoc DMG | Branch `feat/automatic-capture` starts at fetched `main` / `8dbb932`; existing local Xcode project changes preserved. Revised decisions and threat model in this spec | Prove login-Keychain access using only synthetic data, then implement/test automatic startup, resume and packaging. No community artifact validated yet. |
 | 2026-10-26 | Product/security baseline; concepts 1/2 selected; global Focus shortcut and sidebar widget added | Requirements in sections 1–17; selected static references in `designs/` | Product code and signed platform behavior are not implemented or verified. |
 | 2026-10-26 | M0-01–M0-07 repository/planning foundation complete; independent acceptance IDs established | Bootstrap commit `d8d1346`; agent/contribution/setup/security docs; documentation/link/checklist/PNG audit and artifact-ignore checks passed; staged whitespace review passed after removing one trailing blank line from the prompt archive | Next implementation task: M1-01. No app code or product tests exist yet. Full-Xcode integration remains blocked; no system repair authorized. |
 | 2026-10-26 | M1-01–M1-07 complete; SEC-02/SEC-03 passed on `feat/vault-foundation`, stacked on planning baseline `11caee9` | `make build && make test` passed from a clean tracked-source export: 31 tests; independent OpenSSL fixture, synthetic database/WAL scans, rollback/reopen, and stale/cancelled session checks. `package describe`, shell syntax, and documentation/whitespace checks passed | Next: M1-08 native app scaffold and M1-09 Keychain adapter. No runnable desktop app yet. Signed Keychain/lifecycle/widget/OS compatibility and release gates remain pending; no system repair performed. |
@@ -150,6 +159,8 @@ CopySaver is a clipboard utility with protected snippets, not a full password ma
 
 ## 2. Decisions
 
+**November 3, 2026 revision:** The user replaced mandatory vault authentication with automatic capture and a certificate-free community DMG. The community app uses the macOS login Keychain with a calling-app ACL, rather than the provisioned data-protection Keychain. It opens automatically at launch and resumes after sleep without a CopySaver authentication prompt when the login Keychain is available. Existing protected builds/vaults remain isolated and unchanged; no automatic key migration or deletion is permitted. Historical signed-validation evidence below applies to the former profile only.
+
 | Area | Decision | Reason / consequence |
 | --- | --- | --- |
 | First platform | macOS 14 or later; Apple silicon and Intel where supported by the release toolchain | Native integration without maintaining older OS workarounds. |
@@ -160,30 +171,40 @@ CopySaver is a clipboard utility with protected snippets, not a full password ma
 | Windows | Later native client; do not promise a date or parity at launch | macOS quality takes priority. SwiftUI screens will not be reusable on Windows. |
 | Persistence | SQLite through the system SQLite library; encrypted record payloads | Transactions and recovery without a large dependency or plaintext content columns. |
 | Encryption | AES-256-GCM through CryptoKit | Authenticated encryption using an OS-provided implementation. |
-| Key storage | Device-only macOS data protection Keychain, app-scoped access, user-presence requirement | The vault key is separate from the database and requires system authentication. |
-| Unlock | Touch ID when available, with Mac login password fallback | No separate master password to remember in the MVP. |
+| Key storage | Community build: macOS login Keychain, calling-app ACL, random vault key; protected build retained for compatibility | The key is separate from the database. No Apple-issued certificate or fresh user presence is required for ordinary community-vault reads. Login Keychain locking, denial or changed ad-hoc identity can require OS approval. |
+| Unlock | Automatic community-vault open at launch and resume after sleep; explicit retry on Keychain errors | No recurring CopySaver unlock prompt. Sensitive snippet actions retain fresh system authentication as a UI safeguard. |
 | Lock behavior | Pause capture and remove usable vault state from memory | A locked app must not continue retaining its vault key for background capture. |
 | Content | Plain text only in the MVP | URLs, code, addresses, and multiline text work without processing attachments or rich content. |
 | Paste behavior | Copy to clipboard; user pastes with Command-V | No Accessibility permission or simulated keystrokes in the MVP. |
-| Distribution | Signed, notarized universal app in a drag-to-Applications DMG | Simple setup without asking users to disable Gatekeeper. |
+| Distribution | Ad-hoc signed community app in a drag-to-Applications DMG; no Apple-issued signing key or notarization | Users may need first-run approval in macOS Privacy & Security. Updates may require renewed OS approval. No script disables Gatekeeper or removes quarantine. |
 | Network | No app networking, telemetry, analytics, or automatic update checks in the MVP | Offline operation and a narrow permission footprint. |
 | Open source | MIT license | Permissive reuse and contribution. |
 
 The alternative of Tauri or Electron would share more UI code with Windows. Native SwiftUI is selected because macOS is the stated priority and the most important integrations are platform-specific. Share behavior specifications and encryption-format fixtures later, rather than committing to a cross-platform runtime now.
+
+### Community profile and compatibility
+
+The automatic community profile is the default certificate-free build. Its app/vault identities contain `.community` (and `.dev` for development) and its login-Keychain service additionally uses a distinct automatic-key suffix. It must never probe, copy, delete or silently migrate the prior sandboxed data-protection vault. The existing Xcode protected profile remains available for its existing users and manual validation, with its original authentication behavior. Switching profiles creates a separate empty library; migration is deferred, with the old library left intact.
+
+The community profile retains App Sandbox and hardened runtime with no restricted Keychain entitlements. An isolated ad-hoc sandboxed feasibility app successfully added, read noninteractively and deleted its synthetic login-Keychain item on the reference Mac. This is not yet cross-launch/update or supported-OS evidence. The WidgetKit extension remains sandboxed and has no content/key access; community widget discovery must be validated separately and must not be advertised as working merely because the extension builds.
+
+For this profile, **new vaults enable capture by default**, with a visible status and immediate Pause/Disable controls. Existing saved disable/manual-pause preferences are never overridden. OS clipboard approval remains necessary where enforced. Open establishes a baseline without reading the current clipboard; only new copies are captured.
+
+Sleep/session inactivity closes capture admission, invalidates pending work, clears sensitive clipboard ownership and decrypted presentation, then resumes automatically on the corresponding return event. Ordinary idle time does not pause capture. Explicit Hide and pause remains paused until the user explicitly resumes; it is a presentation/privacy action, not an authentication boundary. A failed key read is shown once with Retry; no repeated background prompts or key regeneration. Sensitive snippet reveal/copy/edit still requires fresh `LocalAuthentication`, which protects UI actions rather than making the automatically loaded encryption key presence-bound.
 
 ## 3. Release boundaries
 
 ### v0.1: macOS MVP
 
 - Menu bar app, compact quick-access panel, and library/settings window.
-- Explicitly enabled clipboard capture, pause/resume, and visible status.
+- Automatic community clipboard capture, persistent pause/disable controls, and visible status.
 - Plain-text history with search, copy, pin/unpin, delete, and retention controls.
 - Named snippets with create, edit, search, copy, delete, and a Sensitive option.
 - Address and card-detail starter templates using the same snippet data model.
-- Encrypted storage, authenticated unlock, automatic lock, and sensitive-copy clearing.
+- Encrypted storage, automatic community open/resume, sensitive-action authentication, and sensitive-copy clearing.
 - Global shortcut, optional launch at login, and native light/dark appearances.
 - Optional small and medium macOS Notification Center/desktop widgets for opening Focus mode, History, and Snippets.
-- Error handling, security tests, contributor setup, and signed distribution instructions.
+- Error handling, security tests, contributor setup, and ad-hoc community distribution instructions.
 
 ### After v0.1
 
@@ -201,10 +222,10 @@ Cloud sync, accounts, browser extensions, mobile apps, Linux support, AI feature
 ### 4.1 First run
 
 1. Explain History and Snippets in one short screen.
-2. Explain that content is encrypted on disk and that capture pauses when the vault locks.
+2. Explain that content is encrypted on disk, the login Keychain holds its key, and new community copies are captured automatically after OS clipboard approval.
 3. Explain that the MVP key is bound to this installation/device and there is no portable recovery/export yet. Losing the key can make the data unrecoverable. Do not imply that copying the database is a sufficient backup.
-4. Create the vault and establish its authenticated Keychain entry. If protected key storage is unavailable, stop setup with a useful error; do not downgrade to plaintext or a file-stored key.
-5. Let the user explicitly enable clipboard history. Capture is off until this action. On systems that require clipboard approval, guide the user through the OS-controlled permission flow.
+4. Automatically create/open the community vault using its own login-Keychain entry. If key storage is unavailable, preserve files and show a useful error; do not downgrade to plaintext or a file-stored key. The protected compatibility build retains explicit setup/authentication.
+5. Community capture starts enabled, with clear Pause/Disable controls. On systems that require clipboard approval, guide the user through the OS-controlled permission flow; do not fabricate consent or repeatedly read denied clipboard content.
 6. Offer launch at login, off by default, and show the configurable global shortcut.
 7. Open a useful empty state with Create snippet and a short explanation of how history appears.
 
@@ -339,6 +360,8 @@ Capture is best effort. Several copies between polls may produce only one observ
 
 Product language: **Clipboard history and snippets are encrypted on your Mac. Reading the saved database alone does not reveal their contents.**
 
+For the automatic community profile, the random encryption key lives in the login Keychain, outside the vault. It is not user-presence-bound or guaranteed device-only. The login Keychain's own encryption and the user's login credentials protect that key at rest. An attacker with only the database/WAL/SHM cannot decrypt them. Full device compromise, an unlocked or decryptable login Keychain, known login credentials, or code executing as the logged-in user falls outside this promise. Recommend FileVault for stolen-device protection, without changing OS settings. Do not claim only CopySaver can ever retrieve the key or that automatic opening protects against all disk compromise.
+
 Encrypt bodies, titles, categories, timestamps, source app identifiers/names, pin states, repeat counts, and privacy settings. A file reader may still see that a database exists, its approximate size, opaque row identifiers, envelope versions, and approximate record count. SQLite headers and ciphertext lengths are not secret.
 
 Protect against casual file inspection, an attacker possessing only copied vault files, and unauthenticated access through the locked app. Authenticated encryption detects modified or substituted record payloads when they are read.
@@ -346,6 +369,8 @@ Protect against casual file inspection, an attacker possessing only copied vault
 Do not promise protection against administrator/root compromise, malicious code executing inside the app, an attacker controlling the unlocked user session, screenshots, keyboard observation, plaintext retained by destination apps, or full-database rollback/deletion. A user-controlled operating system can ultimately authorize access to its secrets. Open source does not weaken correctly implemented encryption, but it also does not make an app an exclusive trust boundary against its owner.
 
 ### 7.2 Vault and keys
+
+The data-protection/user-presence details in this subsection describe the **protected compatibility profile**. The community profile instead follows section 2's login-Keychain policy: cryptographically random 256-bit key, caller-only ACL for restricted operations, no synchronization, no broad trusted-app list, no plaintext/file-key fallback, and no automatic migration of existing keys. OS-approved access by other applications or a changed app build is possible. Failed reads never create replacement keys for existing databases.
 
 - Generate a random 256-bit vault key using the platform cryptographic random generator. Never derive it from a bundle identifier, device serial, hardcoded secret, or source-code value.
 - Use the data protection Keychain explicitly (`kSecUseDataProtectionKeychain = true`), with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, `SecAccessControl` user presence, no synchronization, and the app's own access group only.
@@ -372,6 +397,8 @@ Do not promise protection against administrator/root compromise, malicious code 
 - Deleted ciphertext may remain in SQLite free pages, APFS snapshots, SSD storage, or backups. Individual deletion and retention are logical deletion, not guaranteed secure erasure. Reclaim free space when practical without claiming otherwise.
 
 ### 7.4 Lock lifecycle
+
+The mandatory manual-authentication/idle behavior below is retained for the protected compatibility profile. The community profile follows the automatic lifecycle in section 2: purge on suspend, automatic resume when suspension reasons clear, no idle timeout, explicit Hide and pause respected, and fail-closed retry on error. Both profiles retain session generations and stale-work rejection.
 
 Lock immediately on explicit Lock, system session lock, user-session resignation/switch, sleep, app termination, or idle timeout. Use public lifecycle APIs; validate lock-screen coverage on supported OS versions and fail closed on session-state uncertainty. Do not rely solely on Keychain accessibility to remove an already loaded key.
 
