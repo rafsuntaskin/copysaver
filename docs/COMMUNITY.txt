@@ -1,0 +1,42 @@
+CopySaver community build
+
+Install: drag CopySaver to Applications, then open it.
+This app is ad-hoc signed, without an Apple Developer ID certificate or notarization.
+macOS may block the first launch. If you trust the download, macOS may offer Open
+Anyway in System Settings > Privacy & Security after you try opening the app.
+Availability depends on macOS version and device management policy. No installer
+script disables Gatekeeper or removes quarantine. Updates may require renewed
+Gatekeeper, clipboard or Keychain approval. Download only from the project release.
+
+The library creates and opens automatically. History starts enabled for a new
+library; use Pause or disable Keep clipboard history to stop it. Where required,
+allow clipboard access in macOS settings. Only new copies are captured; existing
+clipboard content is not imported. Capture resumes after sleep without a fresh
+CopySaver authentication prompt when your login Keychain is available. Pausing
+or disabling history is remembered. Hide and pause clears the interface until
+you explicitly reopen it. It is not an authentication lock.
+
+Saved records, including their titles and metadata, are encrypted with AES-256-GCM.
+A random key is stored separately in your default macOS login Keychain, with a
+calling-app access list. The app keeps the usable key in memory while open.
+Copied database files alone cannot reveal your saved text. This does not protect
+against malware controlling your account, an unlocked/decryptable Keychain, known
+login credentials, or full device compromise. FileVault helps protect a stolen
+device. CopySaver does not change FileVault or other system security settings.
+
+Keychain approval may be necessary after an ad-hoc app update. A blocked key read
+stops capture and preserves the vault; Open library explicitly retries OS access.
+Sensitive snippet reveal/copy/edit still asks for fresh macOS authentication as
+a UI safeguard, not a separate cryptographic compartment.
+
+This community library is separate from the earlier protected builds. Existing
+protected keys and libraries are not migrated, deleted or read by this version.
+Keep the earlier app to access those saved items. Automatic migration is pending.
+
+There is no portable backup or recovery service. Losing the Keychain key can make
+saved text unrecoverable. Keep another copy of important information. Deletion
+does not guarantee erasure from backups, snapshots, SSD storage or memory.
+
+The bundled widget contains generic navigation only. Discovery and placement in
+ad-hoc builds remain unverified; it never receives saved text or the vault key.
+This is a development preview until the remaining release acceptance checks pass.

@@ -27,7 +27,7 @@ This section is the working delivery plan. Sections 1–17 define the requiremen
 | M1: signed platform integration | In progress; remaining security cases open | Apple Development app/widget and separate probe builds pass with distinct app-scoped Keychain groups. Protected creation, authenticated relaunch, exact history/snippet persistence and native capture/search/copy-back pass. Signed isolated-helper denial, UI-forbidden read denial and native missing-key preservation pass on the reference Mac. Touch ID and Mac-password fallback are verified; remaining native security cases remain pending. Universal unsigned Debug/Release builds also pass. See [development setup](docs/development.md). |
 | M2: history and Focus mode | In progress | Capture, privacy admission, exact-byte deduplication, transactional retention, pinning, encrypted preferences, and pause/resume are implemented. Basic native capture/search/copy and persistence pass; broader native cases remain pending. |
 | M3: snippets and sensitive actions | In progress | Snippet CRUD, categories/templates, promotion, sensitive edit/reveal/copy guards, and reset flows are implemented/tested; native authentication and accessibility validation remain pending. |
-| M4: widgets and release hardening | Source implemented; native/release gates open | Universal app/widget builds, static privacy checks, CI/release tools, forced-crash tests and core benchmarks pass locally. Production release credentials, hosted CI, gallery/OS/accessibility checks and actual notarized distribution remain pending. |
+| M4: widgets and release hardening | Source implemented; native/release gates open | Universal app/widget builds, static privacy checks, CI/release tools, forced-crash tests and core benchmarks pass locally. Community ad-hoc DMG tooling avoids Apple credentials; hosted CI, gallery/OS/accessibility and clean-Mac/update acceptance remain pending. Protected Developer ID distribution is optional and unverified. |
 | Portable backup / Windows | Deferred | Outside v0.1; not included in current completion totals. |
 
 Core and policy implementation may proceed while signed integrations are blocked, as authorized by the user. UI scaffolding can follow the approved direction. Do not treat provisional platform adapters, unsigned previews, or a compiler check as a completed M1 exit gate or a validated release.
@@ -107,14 +107,15 @@ Native/signed integration (check each task only after its own validation):
 
 New community-profile work (November 3, 2026), from `main` at `8dbb932` on `feat/automatic-capture`:
 
-- [ ] **AUTO-01** Implement login-Keychain key storage and automatic create/open with no Apple-issued certificate; retain AES-GCM and fail-closed missing-key/tamper behavior. Prove with an isolated ad-hoc app fixture, not a production vault.
-- [ ] **AUTO-02** Enable capture for new community vaults automatically, respect saved disable/pause choices, rebaseline on startup/resume, and resume after sleep/session activation without repeated authentication. Test lifecycle races and manual hide/pause behavior.
-- [ ] **AUTO-03** Build a certificate-free DMG, audit its identity/entitlements, document first-run/update approval and security limits, and preserve existing protected vaults. Native installation, minimum-OS/Intel and widget discovery remain independent gates.
+- [x] **AUTO-01** Implement login-Keychain key storage and automatic create/open with no Apple-issued certificate; retain AES-GCM and fail-closed missing-key/tamper behavior. Evidence: `./scripts/check-automatic-vault.sh --run` passes create → separate-process exact Unicode reopen → missing-key denial/file preservation/no replacement → synthetic cleanup on Apple silicon macOS 26.6.2. Bundle is ad-hoc, sandboxed/hardened with no restricted Keychain entitlement. Query/ACL/profile isolation tests and existing crypto/tamper regressions pass. No production vault was accessed.
+- [ ] **AUTO-02** Enable capture for new community vaults automatically, respect saved disable/pause choices, rebaseline on startup/resume, and resume after sleep/session activation without repeated authentication. **Implementation/tests passed:** automatic start, three suspension reasons, overlap, manual hide, error-retry latch, delayed-open cancellation, encrypted capture/wake/relaunch/pause pipeline. Actual OS sleep/session/clipboard-permission and native visual checks remain pending; CUA failed to initialize its native pipe.
+- [ ] **AUTO-03** Build a certificate-free DMG, audit its identity/entitlements, document first-run/update approval and security limits, and preserve existing protected vaults. **Local preview passed:** `./scripts/community-release.sh --preview`, artifact audit, `hdiutil verify`, read-only mount/layout audit and detach. App/widget are universal, ad-hoc, sandboxed/hardened, with no Apple authority/profile/restricted entitlement. Next: rebuild from committed clean source. Native installation, minimum-OS/Intel and widget discovery remain independent gates.
 
 These replace the community profile's earlier mandatory user-presence/start-locked/explicit-enable/notarized-release requirements (M1-09/M1-10, M2-09, M4-08/M4-10, FUNC-01/FUNC-09, SEC-05/SEC-06/SEC-11, REL-03/REL-04). Keep historical evidence and IDs; none of it proves the new profile. Remaining encryption, integrity, permission, sensitive-UI and accessibility gates still apply. The current requirement is automatic access to encrypted storage, not app-exclusive access against a compromised user account.
 
 | Date | Change / IDs | Validation / evidence | Blockers / next action |
 | --- | --- | --- | --- |
+| 2026-11-03 | AUTO-01 complete; AUTO-02 implemented and regression-tested; AUTO-03 local preview packaged | `make verify`: 98 registered Swift checks (96 functional passed, two benchmarks skipped), 18 protected-probe admission guards, static project/docs/shell checks pass. Nine targeted automatic/profile/widget tests pass. Isolated ad-hoc Release create/reopen/missing-key fixture passes with synthetic cleanup. Universal DMG passes signature/architecture/entitlement audit, `hdiutil verify` and read-only mounted layout audit | Next: committed-source package and native first-run/real sleep-wake/permission/AX/widget checks. UI automation failed with “native pipe startup failed”; no visual acceptance claimed. User Xcode changes preserved. No Apple certificate, notarization, production-vault access or publication used. |
 | 2026-11-03 | AUTO-01–AUTO-03 planned; user authorizes automatic community vault and ad-hoc DMG | Branch `feat/automatic-capture` starts at fetched `main` / `8dbb932`; existing local Xcode project changes preserved. Revised decisions and threat model in this spec | Prove login-Keychain access using only synthetic data, then implement/test automatic startup, resume and packaging. No community artifact validated yet. |
 | 2026-10-26 | Product/security baseline; concepts 1/2 selected; global Focus shortcut and sidebar widget added | Requirements in sections 1–17; selected static references in `designs/` | Product code and signed platform behavior are not implemented or verified. |
 | 2026-10-26 | M0-01–M0-07 repository/planning foundation complete; independent acceptance IDs established | Bootstrap commit `d8d1346`; agent/contribution/setup/security docs; documentation/link/checklist/PNG audit and artifact-ignore checks passed; staged whitespace review passed after removing one trailing blank line from the prompt archive | Next implementation task: M1-01. No app code or product tests exist yet. Full-Xcode integration remains blocked; no system repair authorized. |
@@ -223,7 +224,7 @@ Cloud sync, accounts, browser extensions, mobile apps, Linux support, AI feature
 
 1. Explain History and Snippets in one short screen.
 2. Explain that content is encrypted on disk, the login Keychain holds its key, and new community copies are captured automatically after OS clipboard approval.
-3. Explain that the MVP key is bound to this installation/device and there is no portable recovery/export yet. Losing the key can make the data unrecoverable. Do not imply that copying the database is a sufficient backup.
+3. Explain that the community key is kept separately in the login Keychain and there is no portable recovery/export yet. Losing the key can make the data unrecoverable. Do not imply that copying the database is a sufficient backup or that this Keychain profile is guaranteed device-only.
 4. Automatically create/open the community vault using its own login-Keychain entry. If key storage is unavailable, preserve files and show a useful error; do not downgrade to plaintext or a file-stored key. The protected compatibility build retains explicit setup/authentication.
 5. Community capture starts enabled, with clear Pause/Disable controls. On systems that require clipboard approval, guide the user through the OS-controlled permission flow; do not fabricate consent or repeatedly read denied clipboard content.
 6. Offer launch at login, off by default, and show the configurable global shortcut.
@@ -250,7 +251,7 @@ Successful setup requires no terminal, admin helper, Accessibility permission, I
 ### 4.3 Library
 
 - Use the approved Native library concept (`designs/01-native-library.png`) as the full window: leading navigation sidebar, middle searchable item list, and trailing detail/editor pane.
-- Navigation: History and Snippets, with a Pinned history filter. Keep capture/pause status, Settings, and Lock vault accessible near the sidebar footer.
+- Navigation: History and Snippets, with a Pinned history filter. Keep capture/pause status, Settings, and Hide and pause (Lock vault for the protected profile) accessible near the sidebar footer.
 - Both History and Snippets use the same window shell. Snippets replace the middle list and detail/editor content rather than switching to the unselected concept 3 layout.
 - Use a compact single-pane layout at small window sizes while preserving clear back navigation.
 - Open from the menu bar's Open Library action or the focus panel. Closing the full window keeps the menu bar app and global Focus Mode shortcut running; Quit exits the app and unregisters the shortcut.
@@ -281,8 +282,8 @@ Sidebar means macOS Notification Center, rather than a separate panel inside the
 - Small widget: CopySaver icon/name, a short static label such as Clipboard & snippets, and one primary Open Focus Mode interaction.
 - Medium widget: a primary Open Focus Mode interaction plus distinct History and Snippets links that open those library views.
 - Match the selected concepts' restrained typography and iconography; support native widget margins, light/dark appearance, and system rendering. These layouts supplement the approved library and focus panel rather than replacing either.
-- Clicking a link launches or activates the containing app at that destination. If the vault is locked, show the existing unlock UI first and navigate after successful unlock. Preserve an already unlocked session. Opening via the widget never unlocks, reveals, or copies content automatically.
-- A widget can launch the app when it is not running; that launch starts locked under the normal launch policy. It must not start background capture without unlock or change the user's enabled/paused preference.
+- Clicking a link launches or activates the containing app at that destination under its normal storage profile. Community cold launch automatically opens its own vault and respects saved capture/pause settings; an explicitly hidden in-process library stays hidden until explicit reopen. The protected profile still requires unlock. A link never copies or reveals a sensitive body automatically.
+- A widget can launch the app when it is not running; community launch follows normal automatic open, while protected launch starts locked. It never changes the user's enabled/paused preference. No widget process retrieves a key or performs unlock itself.
 - v0.1 is a launcher widget: no clipboard previews, snippet names/bodies, categories, item counts, recent searches, or source app information. Do not display a live Capturing/Unlocked status, since a cached widget could show stale state.
 - The extension never reads the clipboard, vault, or Keychain. No decrypted data, keys, shared vault files, or content-bearing timeline entries are passed to it. No App Group or shared Keychain entitlement is needed for these static links.
 - Implement navigation with one root `widgetURL` and explicit `Link` destinations as appropriate. Proposed allowlisted routes: `copysaver://focus`, `copysaver://history`, and `copysaver://snippets`. Only navigation is exposed; URLs contain no record identifiers, payloads, or secrets.
@@ -430,7 +431,7 @@ Vault state, user capture preference, manual pause, and permission status are se
 
 | State / event | Required behavior |
 | --- | --- |
-| First launch | Capture off; no old clipboard import. |
+| First launch | Community: automatic create/open and capture enabled after OS permission. Protected: capture off until enabled. Neither imports old clipboard content. |
 | Locked | No clipboard payload reads, content queries, or content writes; owned sensitive clipboard cleanup remains possible. |
 | Unlock cancelled/failed | Stay locked; no decrypted remnants displayed. |
 | Ready, capture enabled | Observe new clipboard changes subject to filters and limits. |
@@ -441,8 +442,8 @@ Vault state, user capture preference, manual pause, and permission status are se
 | Authentication tag / verification failure | Stop normal loading/capture, preserve the original vault, and report corruption or key mismatch without exposing content. No automatic reset. |
 | Disk full / database write failure | Fail the mutation, stop capture, show a persistent error, and offer retry. Retain only previously committed data; no plaintext spool. |
 | Unsupported newer vault version | Refuse writes and explain that a compatible app is required. |
-| Crash / forced termination | Recover committed transactions on restart and begin locked; partial saves must not be presented as successful. |
-| Sleep / session switch / system lock | Lock and stop capture; wake never silently unlocks. |
+| Crash / forced termination | Recover committed transactions; community opens automatically, protected begins locked. Partial saves must not be presented as successful. |
+| Sleep / session inactivity | Stop capture and purge state; community reopens on corresponding return events if not explicitly hidden and no key error occurred. Protected remains locked. System lock-screen coverage remains a native gate. |
 | Global shortcut unavailable | Menu bar and library remain functional; let the user rebind. |
 
 Reset vault requires a separate destructive confirmation explaining that both history and snippets will be lost. Authenticate when the key is available; missing-key recovery still allows an explicitly confirmed destructive reset. Delete the old key and vault before creating the replacement, without promising removal of external backups or snapshots.
@@ -577,7 +578,7 @@ Exit: all v0.1 acceptance criteria pass or the release remains explicitly a deve
 
 - Repository artifacts: `README.md`, MIT `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, this spec, architecture/security notes, and CI configuration.
 - README leads with the macOS install flow, privacy behavior, capture/lock tradeoff, and device-bound recovery limitations.
-- Source setup: install the documented compatible Xcode version, open the committed project, select a personal development team when needed, and run. Provide a single documented test command for core tests and an app build command.
+- Source setup: `make app` builds the automatic ad-hoc community development app without an Apple account; `make community-dmg` uses full Xcode for the universal app/widget package. The committed Xcode scheme retains the protected compatibility profile and needs provisioning for its Keychain. `make test` runs core tests.
 - Document that development signing and production signing differ; local builds do not inherit release-vault access. Paid developer credentials are not required to read the source or run pure core tests.
 - Publish release source tag, toolchain version, dependency inventory, and artifact checksums. Do not claim reproducible binary builds until separately verified.
 - Collect security reports privately through a maintainer-controlled channel in `SECURITY.md`; do not ask users to attach real vaults or snippets to public issues.
@@ -596,7 +597,7 @@ On Windows, evaluate user-scoped DPAPI for wrapping a random vault key. DPAPI ge
 These do not block writing the implementation, but must be settled before public distribution:
 
 - Confirm the public app name and repository owner. CopySaver is the working name inferred from the project folder.
-- Set the production bundle identifier, Apple Developer signing team, and release signing credentials.
+- Confirm community production bundle ownership. Apple Developer credentials are optional for a future notarized/protected distribution; the selected community DMG requires none.
 - Set the private security-report contact and license copyright holder.
 - Validate remaining screen states and accessibility within the approved Native library + Focus panel direction; the overall visual direction is already selected.
 - Decide when encrypted backup/recovery becomes a release requirement. Until then, v0.1 must disclose its device-bound, non-archive limitations prominently.

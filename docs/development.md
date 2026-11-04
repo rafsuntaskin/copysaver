@@ -2,7 +2,21 @@
 
 ## Current repository state
 
-The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 89 Swift Testing checks (two benchmarks are opt-in), a native development executable, and no external package dependencies. The Xcode app and embedded widget build successfully in Debug and Release for Apple silicon and Intel with signing disabled. Apple Development app/widget builds now pass on the local Apple silicon Mac; protected vault creation, owner-authenticated first unlock, and synthetic clipboard capture/search/copy-back pass. Authenticated relaunch preserves the synthetic history/snippet and resumes capture. Isolated Release helper denial, UI-forbidden protected-read denial and missing-key preservation also pass on this Mac. Full authentication cases, lifecycle/gallery discovery, hosted CI execution, and release binaries remain separate gates. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
+### Automatic community profile (November 3, 2026)
+
+`make app` now packages a sandboxed/hardened, ad-hoc signed app using the login Keychain without a provisioned access group. It uses `org.copysaver.CopySaver.community.dev`, the `copysaver-community-dev` URL scheme, and a separate vault. Normal launch automatically creates/opens it; new history is enabled after OS clipboard approval. Saved disable/pause choices remain respected. Sleep/session suspension purges state and return events reopen without fresh vault authentication. Idle does not stop capture. Hide and pause requires explicit reopening, and sensitive snippet actions still authenticate. A failed Keychain read preserves files and requires explicit retry rather than repeated background prompts.
+
+`make community-dmg` builds the Release app and embedded widget for arm64/x86_64, ad-hoc signs both, audits identities/entitlements, and creates `.build/community/CopySaver-community.dmg` plus checksums/build metadata. It requires full Xcode and a clean reviewed checkout, but no Apple account/certificate/provisioning/notarization credentials. For a local uncommitted test artifact only, use `./scripts/community-release.sh --preview`; metadata records its dirty status. Neither command publishes, disables Gatekeeper nor removes quarantine. Read [community notes](COMMUNITY.txt) before testing. Widget discovery on ad-hoc builds remains unverified.
+
+`./scripts/check-automatic-vault.sh --build` builds a fixed, isolated ad-hoc Release fixture without Keychain operations. The opt-in `--run` creates only its own fictional login-Keychain key/vault, starts capture through the production service without touching the system clipboard, verifies exact encrypted persistence in a separate process, then deletes only its synthetic key to prove missing-key preservation/no replacement and removes the fixture files. It never reads a real app vault or accepts caller-supplied paths/content. No authentication prompts are expected with an unlocked default login Keychain. This native fixture is not run by ordinary `make verify`.
+
+The login-Keychain adapter deliberately uses the older `SecAccess` ACL API and file-based Keychain shim; Apple recommends data-protection Keychain in general, but that implementation requires provisioning for access groups. This narrow compatibility use avoids Apple-issued certificates and preserves a caller-only ACL. Deprecation warnings are expected, not suppressed. Changed ad-hoc builds may need renewed Keychain/clipboard approval; no stable publisher identity is claimed. The key is not guaranteed device-only. See [Apple TN3137](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains).
+
+### Protected compatibility profile
+
+The following historical Xcode evidence concerns `org.copysaver.CopySaver.dev` and its separate data-protection vault. It does not imply community release validation. Opening the unchanged Xcode scheme retains the previous explicit authentication behavior; use `make app` to test the new community behavior. Existing protected libraries/keys are not migrated or read by community builds.
+
+The repository contains a Swift 6 package with `CopySaverDomain`, `CopySaverVault`, `CopySaverPlatform`, and `CopySaverDesktop` libraries, 98 Swift Testing checks (two benchmarks are opt-in), a native development executable, and no external package dependencies. The Xcode app and embedded widget build successfully in Debug and Release for Apple silicon and Intel with signing disabled. Apple Development app/widget builds now pass on the local Apple silicon Mac; protected vault creation, owner-authenticated first unlock, and synthetic clipboard capture/search/copy-back pass. Authenticated relaunch preserves the synthetic history/snippet and resumes capture. Isolated Release helper denial, UI-forbidden protected-read denial and missing-key preservation also pass on this Mac. Full authentication cases, lifecycle/gallery discovery, hosted CI execution, and release binaries remain separate gates. See [spec.md](../spec.md#0-delivery-checklist-and-progress) for verified delivery status.
 
 ## Available standalone tools
 
@@ -66,9 +80,9 @@ make app
 make preview
 ```
 
-`make app` builds the Debug executable through SwiftPM, packages `.build/CopySaverDev.app`, and verifies its local ad-hoc signature with sandbox and hardened runtime. `make preview` opens that bundle with `--ui-preview`. The DEBUG-only preview contains fictional records, no vault/authentication services, and no clipboard output. Sample reveal/copy/edit actions are disabled. Lock clears the samples; Reset sample preview restores them. The optimized Release executable excludes the sample records and refuses the preview flag.
+`make app` builds the community Debug executable through SwiftPM, packages `.build/CopySaverDev.app`, and verifies its local ad-hoc signature with sandbox and hardened runtime. `make preview` opens that bundle with `--ui-preview`. The DEBUG-only preview contains fictional records, no vault/authentication services, and no clipboard output. Sample reveal/copy/edit actions are disabled. Lock clears the samples; Reset sample preview restores them. The optimized Release executable excludes the sample records and refuses the preview flag.
 
-Normal launch starts locked (or offers setup for a new vault). It attempts real data-protection Keychain access and may report a missing-entitlement error with ad-hoc signing. Do not weaken entitlements or authentication to bypass this. Use synthetic data only until signed integration passes. Capture starts off; enable it in History settings after unlocking. On systems with clipboard permission controls, automatic capture requires Always Allow.
+Normal community launch follows the automatic profile above. The protected Xcode profile still starts locked and uses data-protection Keychain authentication; ad-hoc signing cannot grant that profile's restricted entitlements. Never select the community backend as a fallback after protected-key failure. On systems with clipboard permission controls, unattended capture requires Always Allow.
 
 `CopySaver.xcodeproj` and its shared `CopySaver` scheme reference the local Swift package. The unsigned Debug app and embedded widget build successfully for arm64 and x86_64 with:
 
@@ -95,7 +109,7 @@ Native visual inspection and remaining platform gates are recorded in [native-in
 - Use separate development and production bundle identifiers, Keychain namespaces, and vault locations.
 - Use synthetic clipboard data and test-owned temporary storage. Never import a production vault or inspect unrelated user content for test fixtures.
 - Prefer command-scoped environment settings. Do not modify global Git settings, developer settings, or signing configuration for convenience.
-- Never weaken crypto, authentication, sandboxing, or entitlements to make a development preview appear functional.
+- Never weaken crypto/sandboxing or switch protection profiles implicitly to make a failed operation appear functional. The community profile is explicitly selected in bundle metadata and uses a distinct identity and key namespace.
 - Follow [CONTRIBUTING.md](../CONTRIBUTING.md) for branching, commits, validation, and progress updates.
 
 ## Verification and release tools

@@ -46,19 +46,20 @@ public enum CopySaverApplication {
 
     init(preview: Bool) {
         let identifier = Bundle.main.bundleIdentifier
+        let automatic = Bundle.main.object(forInfoDictionaryKey: "CopySaverStorageProfile") as? String == "automatic"
         scheme = Bundle.main.object(forInfoDictionaryKey: "CopySaverURLScheme") as? String ?? "copysaver-dev"
         if preview {
             clipboard = nil
             monitor = nil
             model = DesktopModel(service: nil, clipboard: nil, preview: true)
         } else if let identifier,
-                  let keys = try? KeychainVaultKeyProvider(bundleIdentifier: identifier),
+                  let keys = try? KeychainVaultKeyProvider(bundleIdentifier: identifier, protection: automatic ? .automatic : .userPresence),
                   let support = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
             let location = support.appendingPathComponent(identifier, isDirectory: true).appendingPathComponent("vault.sqlite")
             let output = SystemClipboardOutput(bundleIdentifier: identifier)
             clipboard = output
             monitor = ClipboardMonitor(input: SystemClipboardInput(), ownIdentifier: identifier)
-            model = DesktopModel(service: DesktopVaultService(url: location, keys: keys), clipboard: output)
+            model = DesktopModel(service: DesktopVaultService(url: location, keys: keys), clipboard: output, automaticallyOpensVault: automatic)
         } else {
             clipboard = nil
             monitor = nil
@@ -239,7 +240,7 @@ public enum CopySaverApplication {
         for (title, action) in [("Open Focus Mode", #selector(toggleFocus)), ("Open Library", #selector(openLibrary)),
                                 (model.settings?.captureEnabled == true ? "Disable History" : "Enable History", #selector(toggleHistory)),
                                 (model.settings?.manuallyPaused == true ? "Resume Capture" : "Pause Capture", #selector(togglePause)),
-                                ("Settings…", #selector(openSettings)), ("Lock Vault", #selector(lockVault)), ("Quit CopySaver", #selector(quit))] {
+                                ("Settings…", #selector(openSettings)), (model.lockActionTitle, #selector(lockVault)), ("Quit CopySaver", #selector(quit))] {
             let entry = NSMenuItem(title: title, action: action, keyEquivalent: title == "Quit CopySaver" ? "q" : "")
             entry.target = self; menu.addItem(entry)
         }
@@ -296,14 +297,22 @@ public enum CopySaverApplication {
         observers.append(workspace.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.monitor?.rebaseline() }
         })
-        for name in [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.screensDidSleepNotification] {
+        for (name, reason) in [(NSWorkspace.willSleepNotification, VaultSuspensionReason.sleep),
+                               (NSWorkspace.sessionDidResignActiveNotification, .sessionInactive),
+                               (NSWorkspace.screensDidSleepNotification, .displaySleep)] {
             observers.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.model.lock() }
+                MainActor.assumeIsolated { self?.model.suspend(for: reason) }
             })
         }
         observers.append(workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.clipboard?.clearExpiredCopy() }
+            MainActor.assumeIsolated { self?.clipboard?.clearExpiredCopy(); self?.model.resume(from: .sleep) }
         })
+        for (name, reason) in [(NSWorkspace.sessionDidBecomeActiveNotification, VaultSuspensionReason.sessionInactive),
+                               (NSWorkspace.screensDidWakeNotification, .displaySleep)] {
+            observers.append(workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.model.resume(from: reason) }
+            })
+        }
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.model.setPresentationActive(false)
@@ -317,11 +326,14 @@ public enum CopySaverApplication {
         // Supplemental lock-screen signal. The notification name is undocumented;
         // supported-OS coverage is an explicit pending M1-11 integration gate.
         observers.append(DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.model.lock() }
+            MainActor.assumeIsolated {
+                guard let self, !self.model.automaticallyOpensVault else { return }
+                self.model.lock()
+            }
         })
         idleTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, !self.model.isPreview, self.model.phase == .unlocked,
+                guard let self, !self.model.isPreview, !self.model.automaticallyOpensVault, self.model.phase == .unlocked,
                       let timeout = self.model.settings?.idleLockTimeout.interval,
                       let anyInput = CGEventType(rawValue: UInt32.max) else { return }
                 if CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput) >= timeout { self.model.lock() }

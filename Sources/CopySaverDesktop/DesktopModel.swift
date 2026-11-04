@@ -13,6 +13,7 @@ public enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked, unlocking, locking, unlocked, failed }
+public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInactive, displaySleep }
 
 @MainActor @Observable public final class DesktopModel {
     public private(set) var phase: DesktopPhase = .loading
@@ -21,6 +22,8 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     public private(set) var errorMessage: String?
     public private(set) var notice: String?
     public let isPreview: Bool
+    public let automaticallyOpensVault: Bool
+    public var lockActionTitle: String { automaticallyOpensVault ? "Hide and pause" : "Lock vault" }
     public var section: LibrarySection = .history
     public var libraryQuery = ""
     public var focusQuery = ""
@@ -62,16 +65,23 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     @ObservationIgnored private var revealExpiry: Task<Void, Never>?
     @ObservationIgnored private var lockingOperation: Task<Void, Never>?
     @ObservationIgnored private var sensitivePresentation = UUID()
+    @ObservationIgnored private var suspensionReasons: Set<VaultSuspensionReason> = []
+    @ObservationIgnored private var manuallyHidden = false
+    @ObservationIgnored private var automaticOpenFailed = false
+    @ObservationIgnored private var resumeOperation: Task<Void, Never>?
 
     func finishPendingOperations() async {
         await operation?.value
         await lockingOperation?.value
+        await resumeOperation?.value
+        await operation?.value
     }
 
-    public init(service: (any DesktopVaultAccess)?, clipboard: (any ClipboardOutput)?, preview: Bool = false) {
+    public init(service: (any DesktopVaultAccess)?, clipboard: (any ClipboardOutput)?, preview: Bool = false, automaticallyOpensVault: Bool = false) {
         self.service = preview ? nil : service
         self.clipboard = preview ? nil : clipboard
         self.isPreview = preview
+        self.automaticallyOpensVault = automaticallyOpensVault
         if preview {
             #if DEBUG
             records = Self.previewRecords()
@@ -117,7 +127,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
     public var captureStatus: String {
         if isPreview { return "Sample data" }
         switch captureConditions.availability {
-        case .locked: return "Locked"
+        case .locked: return automaticallyOpensVault ? "Capture stopped" : "Locked"
         case .disabled: return "History off"
         case .paused: return "Paused"
         case .permissionNeeded: return "Clipboard permission needed"
@@ -212,9 +222,16 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
             errorMessage = "Launch the CopySaver app bundle to configure its protected vault."
             return
         }
+        if automaticallyOpensVault {
+            manuallyHidden = false
+            phase = .locked
+            _ = openVault()
+            return
+        }
         phase = .loading
         run(fallback: .failed, work: { try await service.prepare() }) { [weak self] exists in
-            self?.phase = exists ? .locked : .needsSetup
+            guard let self else { return }
+            self.phase = exists ? .locked : .needsSetup
         }
     }
 
@@ -222,25 +239,79 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         guard !isPreview, phase == .needsSetup, !isBusy, let service else { return }
         run(fallback: .failed, work: { try await service.create() }) { [weak self] _ in
             self?.phase = .locked
-            self?.notice = "Vault created. Unlock to continue."
+            if self?.automaticallyOpensVault == true { self?.openAutomatically() }
+            else { self?.notice = "Vault created. Unlock to continue." }
         }
     }
 
     @discardableResult public func unlock() -> Task<Void, Never>? {
-        guard !isPreview, phase == .locked, let service else { return nil }
+        manuallyHidden = false
+        automaticOpenFailed = false
+        return openVault(userInitiated: true)
+    }
+
+    private func openAutomatically() {
+        guard automaticallyOpensVault, suspensionReasons.isEmpty, !manuallyHidden, !automaticOpenFailed else { return }
+        _ = openVault()
+    }
+
+    @discardableResult private func openVault(userInitiated: Bool = false) -> Task<Void, Never>? {
+        guard !isPreview, phase == .locked, suspensionReasons.isEmpty, let service else { return nil }
         phase = .unlocking
-        run(fallback: .locked, work: { try await service.unlock() }) { [weak self] records in
-            self?.records = records
+        // Only a successful open clears this latch. Failed opens never retry on a timer/wake loop.
+        automaticOpenFailed = true
+        let automatic = automaticallyOpensVault
+        run(fallback: .locked, work: {
+            var created = false
+            if automatic {
+                if try await !service.prepare() { try await service.create(); created = true }
+                if userInitiated { try await service.requestAutomaticAccess() }
+                try Task.checkCancellation()
+            }
+            return (records: try await service.unlock(), created: created)
+        }) { [weak self] result in
+            self?.records = result.records
             self?.phase = .unlocked
+            self?.automaticOpenFailed = false
             self?.storageWritable = true
             self?.capacityMessage = nil
             self?.ensureSelection(query: "")
             self?.onCaptureBoundary?()
+            if result.created { self?.notice = "History is enabled. Allow clipboard access if macOS asks. Pause or disable history from the menu bar." }
         }
         return operation
     }
 
     public func lock() {
+        manuallyHidden = true
+        closeVault()
+    }
+
+    public func suspend(for reason: VaultSuspensionReason) {
+        guard !isPreview, suspensionReasons.insert(reason).inserted else { return }
+        let wasOpening = phase == .unlocking || phase == .loading
+        let openError = errorMessage
+        closeVault()
+        if wasOpening { automaticOpenFailed = false }
+        else if automaticallyOpensVault && automaticOpenFailed { errorMessage = openError }
+    }
+
+    public func resume(from reason: VaultSuspensionReason) {
+        guard suspensionReasons.remove(reason) != nil, suspensionReasons.isEmpty else { return }
+        let locking = lockingOperation
+        resumeOperation?.cancel()
+        resumeOperation = Task { [weak self] in
+            await locking?.value
+            guard let self, !Task.isCancelled, self.suspensionReasons.isEmpty else { return }
+            // Startup interrupted before preparation can safely retry; a failed key read cannot.
+            if self.automaticallyOpensVault && !self.manuallyHidden && !self.automaticOpenFailed {
+                self.openAutomatically()
+                await self.operation?.value
+            }
+        }
+    }
+
+    private func closeVault() {
         onWillLock?()
         onCaptureBoundary?()
         generation = UUID()
@@ -260,7 +331,9 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         if isPreview { phase = .locked; return }
         phase = .locking
         let request = generation
+        let previousLock = lockingOperation
         lockingOperation = Task { [weak self, service] in
+            await previousLock?.value
             await service?.lock()
             guard let self, self.generation == request else { return }
             self.phase = .locked
@@ -523,7 +596,7 @@ public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked
         case KeychainFailure.missingEntitlement: "macOS Keychain requires a correctly development-signed build of CopySaver."
         case KeychainFailure.missingKey: "This vault’s encryption key is missing. The saved files have been preserved."
         case KeychainFailure.authenticationFailed: "Authentication failed. Please unlock again."
-        case KeychainFailure.interactionRequired: "Unlock your Mac and try again."
+        case KeychainFailure.interactionRequired: "macOS Keychain access needs approval. Unlock your login Keychain or reopen the library to retry."
         case VaultError.payloadBudgetExceeded: "The encrypted storage limit has been reached."
         case VaultError.unsupportedDatabaseVersion, VaultError.unsupportedEnvelopeVersion: "This vault needs a compatible version of CopySaver."
         case VaultError.authenticationFailed, VaultError.corruptDatabase, VaultError.invalidRecord: "This vault could not be verified. Its saved files have been preserved."

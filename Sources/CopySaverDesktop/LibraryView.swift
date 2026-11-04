@@ -16,7 +16,7 @@ struct LibraryView: View {
                             ForEach(LibrarySection.allCases) { Text($0.rawValue).tag($0) }
                         }.labelsHidden().accessibilityLabel("Library section")
                         Button { model.onOpenFocus?() } label: { Image(systemName: "magnifyingglass") }.help("Open Focus mode")
-                        Button { model.lock() } label: { Image(systemName: "lock") }.help("Lock vault")
+                        Button { model.lock() } label: { Image(systemName: "lock") }.help(model.lockActionTitle)
                     }.padding(.horizontal, 18).padding(.top, 40).padding(.bottom, 12)
                     Divider()
                     if model.phase != .unlocked { VaultGateView(model: model) }
@@ -76,7 +76,7 @@ struct LibraryView: View {
                 Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(.plain).padding(12).disabled(model.phase != .unlocked)
             Button { model.lock() } label: {
-                Label("Lock vault", systemImage: "lock").frame(maxWidth: .infinity, alignment: .leading)
+                Label(model.lockActionTitle, systemImage: "lock").frame(maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(.plain).padding(12).disabled(model.phase != .unlocked)
         }
         .padding(.horizontal, 12).padding(.top, 54).padding(.bottom, 16)
@@ -251,9 +251,9 @@ struct VaultGateView: View {
     var body: some View {
         VStack(spacing: 18) {
             Image(systemName: model.phase == .needsSetup ? "checkmark.shield" : "lock").font(.system(size: 34)).foregroundStyle(.secondary)
-            Text(model.phase == .needsSetup ? "A private home for your text" : model.phase == .failed ? "Vault unavailable" : "Your vault is locked")
+            Text(model.phase == .needsSetup ? "A private home for your text" : model.phase == .failed ? "Vault unavailable" : model.automaticallyOpensVault ? (model.isBusy ? "Opening your library" : "Capture is stopped") : "Your vault is locked")
                 .font(.system(size: 21, weight: .semibold))
-            Text(model.phase == .needsSetup ? "History and named snippets, stored locally with a key protected by macOS Keychain." : model.phase == .failed ? "Correct the problem below, then retry." : "Unlock with Touch ID or your Mac’s login password.")
+            Text(model.phase == .needsSetup ? "History and named snippets, stored locally with a key protected by macOS Keychain." : model.phase == .failed ? "Correct the problem below, then retry." : model.automaticallyOpensVault ? "Open your encrypted library to continue. macOS may ask for Keychain access after an app update." : "Unlock with Touch ID or your Mac’s login password.")
                 .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 340)
             if model.phase == .needsSetup {
                 Text("The key stays on this Mac. Losing it can make your saved data unrecoverable. Portable backup is not available yet.")
@@ -274,7 +274,7 @@ struct VaultGateView: View {
             } else if model.phase == .needsSetup {
                 Button("Create encrypted vault") { model.createVault() }.buttonStyle(.borderedProminent).controlSize(.large)
             } else if model.phase == .locked {
-                Button("Unlock vault") { model.unlock() }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
+                Button(model.automaticallyOpensVault ? "Open library" : "Unlock vault") { model.unlock() }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
             } else {
                 Button("Retry") { model.start() }.buttonStyle(.bordered)
             }

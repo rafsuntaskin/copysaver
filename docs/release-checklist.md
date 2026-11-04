@@ -6,6 +6,14 @@ No release is approved yet. Source/build checks do not establish signed platform
 
 Confirm app/repository ownership, production bundle identifiers, Apple Developer team, Developer ID Application identity, private security-report channel, and copyright holder (M4-08). No account, identity, or remote is invented. Confirm the device-bound v0.1/no-portable-backup decision and publish the disclosure in [PRIVACY.txt](PRIVACY.txt).
 
+## Community DMG
+
+The November 3 revision selects a separate, automatic login-Keychain community build with no Apple-issued signing key. Developer ID/notarization inputs and the signed archive procedure below apply only to the protected compatibility profile. Community acceptance follows AUTO-01–AUTO-03 in the spec. Account compromise and a decryptable login Keychain are outside its at-rest promise; review [COMMUNITY.txt](COMMUNITY.txt).
+
+From a clean reviewed checkout, run `make verify`, then `make community-dmg`. The script builds a universal app/widget, ad-hoc signs each with sandbox and hardened runtime, audits the absence of Apple authorities/restricted entitlements/provisioning, and writes the DMG, SHA-256, source revision, toolchain, dependency and build-status files under ignored `.build/community/`. For an explicitly local uncommitted preview use `./scripts/community-release.sh --preview`; never label its dirty artifact a reviewed release. These commands never publish or submit to Apple.
+
+Validate the downloaded/quarantined DMG on clean supported Macs. First launch may require macOS Privacy & Security approval; do not disable Gatekeeper or strip quarantine in installation scripts. After approval, verify automatic create/open, OS clipboard permission, new-copy capture without old imports, exact snippet/history reopen, saved pause/disable, real sleep/wake/session switching, explicit Hide and pause, Keychain denial/update approval, missing-key/tamper preservation, and fresh sensitive UI authentication. Widget discovery, cold routing, supported OS/Intel, VoiceOver and the remaining security/performance gates remain required where applicable. No Gatekeeper exception is proof of protected-Keychain or application-exclusive access. Ad-hoc updates can prompt again; do not promise first-run-only approval forever.
+
 ## Native evidence matrix
 
 Run each scenario on macOS 14 and the latest supported stable macOS, on Apple silicon and Intel where supported:

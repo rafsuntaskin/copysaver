@@ -12,7 +12,7 @@ People working across macOS apps throughout the day who need to recover recently
 
 ## Product Purpose
 
-Make local text retrieval quick and understandable while encrypting stored content. No account, server, telemetry, or network dependency. History and snippets share an authenticated vault; capture stops when locked. Windows is a later effort.
+Make local text retrieval quick and understandable while encrypting stored content. No account, server, telemetry, or network dependency. Community builds automatically open their login-Keychain-backed vault and capture new copies after OS approval. Pause/Disable choices persist; sleep purges state and wake resumes. Hide and pause is explicit presentation privacy, while Sensitive snippet actions retain fresh system authentication. Earlier protected builds remain separate. Windows is a later effort.
 
 ## Brand Personality
 
