@@ -1,3 +1,4 @@
+import AppKit
 import CopySaverDomain
 import SwiftUI
 
@@ -180,13 +181,38 @@ struct LibraryView: View {
                 Image(systemName: model.section == .snippets ? "doc.text" : "clipboard").font(.system(size: 30)).foregroundStyle(.secondary)
                 Text(model.libraryQuery.isEmpty ? (model.section == .snippets ? "Save something you use often" : "Your clipboard history starts here") : "No matches")
                     .font(.system(size: 19, weight: .semibold))
-                Text(model.libraryQuery.isEmpty ? (model.section == .snippets ? "Give reusable text a name so it’s easy to find." : "Enable clipboard history in Settings to keep future copies, or create a named snippet.") : "Try a different word or clear your search.")
+                Text(model.libraryQuery.isEmpty ? (model.section == .snippets ? "Give reusable text a name so it’s easy to find." : historyEmptyDescription) : "Try a different word or clear your search.")
                     .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
+                if !model.isPreview, model.libraryQuery.isEmpty, model.section == .history || model.section == .pinned {
+                    if model.settings?.captureEnabled != true {
+                        Button("Enable history") { model.setCaptureEnabled(true) }.disabled(model.isBusy)
+                    } else if model.settings?.manuallyPaused == true {
+                        Button("Resume capture") { model.toggleCapturePause() }.disabled(model.isBusy)
+                    } else if model.clipboardPermission != .allowed {
+                        if model.clipboardPermission != .denied {
+                            Button("Request clipboard access") { model.onRequestClipboardAccess?() }.disabled(model.isBusy)
+                        }
+                        Button("Open System Settings") { NSWorkspace.shared.open(URL(filePath: "/System/Applications/System Settings.app")) }
+                        Text("Choose Always Allow for CopySaver in Privacy & Security → Paste from Other Apps. The access request discards the current clipboard value.")
+                            .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 340)
+                    }
+                }
                 if !model.isPreview {
                     Button("New snippet") { model.beginSnippet() }.buttonStyle(.borderedProminent).disabled(model.isBusy)
                 }
                 FeedbackView(model: model)
             }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var historyEmptyDescription: String {
+        switch model.captureConditions.availability {
+        case .ready: "Copy text in another app to add it here. Earlier clipboard contents are skipped."
+        case .permissionNeeded: "Allow clipboard access to keep new copies automatically."
+        case .paused: "Capture is paused. Resume when you want to keep new copies."
+        case .disabled: "Enable clipboard history to keep future copies, or create a named snippet."
+        case .storageUnavailable: "Resolve the storage error before capturing more copies."
+        case .locked: "Open your library to continue."
         }
     }
 }
