@@ -9,53 +9,66 @@ struct FocusView: View {
     var body: some View {
         VStack(spacing: 0) {
             if model.phase == .unlocked {
-                HStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search clipboard…", text: $model.focusQuery)
-                        .textFieldStyle(.plain).font(.system(size: 19)).focused($searchFocused)
-                        .accessibilityLabel("Search clipboard and snippets")
-                        .onSubmit { model.copySelection(dismissFocus: true) }
-                        .onKeyPress(.downArrow) { model.moveSelection(1, query: model.focusQuery); return .handled }
-                        .onKeyPress(.upArrow) { model.moveSelection(-1, query: model.focusQuery); return .handled }
-                    Text("esc").font(.system(size: 10)).foregroundStyle(.secondary).padding(5).background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
-                }.padding(22)
-                HStack {
-                    Picker("View", selection: $model.section) {
-                        Text("History").tag(LibrarySection.history)
-                        Text("Snippets").tag(LibrarySection.snippets)
-                    }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("History or snippets").frame(width: 220)
-                    Spacer()
-                    CaptureStatusView(model: model)
-                }.padding(.horizontal, 22).padding(.bottom, 16)
+                let visible = model.items(query: model.focusQuery)
+                VStack(spacing: 14) {
+                    LibrarySearchField(text: $model.focusQuery,
+                                       prompt: model.section == .snippets ? "Search snippets…" : "Search clipboard…",
+                                       focus: $searchFocused, prominent: true, hint: "esc",
+                                       submit: { model.copySelection(dismissFocus: true) },
+                                       move: { model.moveSelection($0, query: model.focusQuery) })
+                    HStack {
+                        Picker("View", selection: $model.section) {
+                            Text("History").tag(LibrarySection.history)
+                            Text("Snippets").tag(LibrarySection.snippets)
+                        }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("History or snippets").frame(width: 190)
+                        Spacer()
+                        CaptureStatusView(model: model)
+                    }
+                }.padding(18)
                 Divider()
+                HStack {
+                    Text(model.focusQuery.isEmpty ? (model.section == .snippets ? "YOUR SNIPPETS" : "RECENT") : "RESULTS")
+                        .font(.system(size: 10, weight: .semibold)).tracking(0.7)
+                    Spacer()
+                    Text("\(visible.count)").font(.system(size: 11)).monospacedDigit()
+                }.foregroundStyle(.secondary).padding(.horizontal, 22).padding(.top, 12).padding(.bottom, 6)
                 ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 3) {
-                        ForEach(model.items(query: model.focusQuery)) { record in
-                            RecordRow(record: record, selected: record.id == model.selectedID) { model.selectRecord(record.id) }.id(record.id)
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(visible) { record in
+                                RecordRow(record: record, selected: record.id == model.selectedID, compact: true) { model.selectRecord(record.id) }.id(record.id)
+                            }
+                        }.padding(.horizontal, 10).padding(.bottom, 8)
+                    }
+                    .overlay {
+                        if visible.isEmpty {
+                            VStack(spacing: 10) {
+                                Image(systemName: "magnifyingglass").font(.system(size: 23))
+                                Text(model.focusQuery.isEmpty ? "No saved text in this view yet." : "No matching text").font(.system(size: 13))
+                                if !model.focusQuery.isEmpty { Button("Clear search") { model.focusQuery = "" }.buttonStyle(.bordered) }
+                            }.foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                        if model.items(query: model.focusQuery).isEmpty {
-                            Text(model.focusQuery.isEmpty ? "No saved text in this view yet." : "No matches. Try another search.")
-                                .font(.system(size: 13)).foregroundStyle(.secondary).padding(30)
-                        }
-                    }.padding(10)
-                }
-                .onChange(of: model.selectedID) { _, id in if let id { proxy.scrollTo(id, anchor: .center) } }
+                    }
+                    .onChange(of: model.selectedID) { _, id in if let id { proxy.scrollTo(id) } }
                 }
                 FeedbackView(model: model).padding(.horizontal, 20)
                 Divider()
-                HStack(spacing: 15) {
-                    Label("Navigate", systemImage: "arrow.up.arrow.down")
-                    Button { model.copySelection() } label: { Label("Copy", systemImage: "return") }
-                        .buttonStyle(.plain).keyboardShortcut("c", modifiers: .command).disabled(!model.canCopy)
-                    Spacer()
-                    Button("Open Library") {
+                HStack(spacing: 12) {
+                    HStack(spacing: 6) { KeyboardHint("↑↓"); Text("Navigate") }
+                        .font(.system(size: 11)).foregroundStyle(.secondary).accessibilityLabel("Navigate results with the up and down arrows")
+                    Spacer(minLength: 4)
+                    Button {
                         model.libraryQuery = model.focusQuery
                         model.onOpenLibrary?()
-                    }.buttonStyle(.plain)
-                    Button { model.lock() } label: { Image(systemName: model.lockActionSymbol) }.buttonStyle(.plain)
+                    } label: { Label("Library", systemImage: "arrow.up.right.square") }.help("Open Library").accessibilityLabel("Open Library")
+                    Button { model.copySelection() } label: { HStack(spacing: 6) { Text("Copy"); KeyboardHint("⌘C") } }
+                        .keyboardShortcut("c", modifiers: .command).disabled(!model.canCopy)
+                    Button { model.copySelection(dismissFocus: true) } label: {
+                        HStack(spacing: 8) { Text("Copy & close"); Image(systemName: "return").accessibilityHidden(true) }
+                    }.buttonStyle(.borderedProminent).disabled(!model.canCopy)
+                    Button { model.lock() } label: { Image(systemName: model.lockActionSymbol) }
                         .help(model.lockActionTitle).accessibilityLabel(model.lockActionTitle)
-                }.font(.system(size: 11)).foregroundStyle(.secondary).padding(17)
+                }.buttonStyle(.bordered).controlSize(.small).font(.system(size: 12)).padding(.horizontal, 18).padding(.vertical, 13)
             } else {
                 VaultGateView(model: model)
                 HStack { Spacer(); Button("Open Library") { model.onOpenLibrary?() }.buttonStyle(.plain) }.padding(16)
@@ -123,7 +136,7 @@ struct SettingsView: View {
                     Text(versionLabel).foregroundStyle(.secondary)
                     Text("\(model.automaticallyOpensVault ? "Automatic library" : "Protected library") · local storage · MIT license").foregroundStyle(.secondary)
                 }
-            }.font(.system(size: 13)).padding(.top, 60).padding(.horizontal, 36).padding(.bottom, 36).frame(maxWidth: 660, alignment: .leading)
+            }.font(.system(size: 13)).padding(.top, 48).padding(.horizontal, 36).padding(.bottom, 36).frame(maxWidth: 660, alignment: .leading)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

@@ -18,9 +18,13 @@ System font and SF Symbols. App title approximately 17 pt semibold; section titl
 
 Three columns: approximately 210 pt navigation sidebar, 300–360 pt item list, and flexible text detail/editor. Start near 1040×680 pt and remain useful at smaller desktop widths through resizing and pane adaptation. Keep native traffic lights, search above the list, subdued source/time metadata, selected-row fill, and copy/save actions near the detail footer. History and Snippets use the same shell. Pinned is a history filter.
 
+Keep the list title on its own line, followed by a full-width rounded native search field with explicit focus and Clear search. A small Recent/Results label and result count establish list context. Result rows use 32 pt symbol containers, 13 pt titles and 11 pt metadata, with approximately 62 pt library / 50 pt Focus row heights. Reuse the navigation hover/press/focus vocabulary; selection never scales or slides. Preview source context sits above the text, Pin/Edit and More actions sit in the header, and Copy stays at the lower trailing edge. Text views have transparent native backgrounds and reset their private editing state when the selected record changes.
+
 ## Focus mode, concept 2
 
 A compact floating panel with search first, History/Snippets switch, optional pinned section, recent items, and a slim keyboard/action footer. No full sidebar or large preview pane. Focus search on opening; arrows navigate; Return copies and dismisses; Escape dismisses; Open Library transfers the current view/selection. Global shortcut configuration and full-screen/Space behavior require native integration validation.
+
+Use the shared search field at a larger type size, compact single-line result titles, and understated keyboard hints. Distinguish Copy (Command-C, stays open) from Copy & close (Return); Library carries the current query and selection. Result transitions stay immediate, with short background-only hover/press fades and no delayed search or animated list reordering.
 
 ## State and content rules
 

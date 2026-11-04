@@ -22,3 +22,16 @@ COPYSAVER_BENCHMARKS=1 ./scripts/swift.sh test -c release --disable-xctest --fil
 The two benchmarks are opt-in to avoid large fixture/CPU costs in ordinary unit runs. They verify result bounds and exact near-budget round trips, and print aggregate timings only. They do not assert a wall-clock threshold on arbitrary CI machines.
 
 Still pending under M4-05: native warm-panel p95, capture visibility latency, idle CPU with capture enabled, native app near-limit memory, Intel and minimum-OS measurements. Signed integration and real clipboard permission are separate gates. Do not infer those results from the core timings above.
+
+## November 4 search and navigation revision
+
+Measured on the same local arm64 Mac, macOS 26.6.2, Command Line Tools Swift 6.3.3, optimized Release. The synthetic dataset remains 5,000 history records and 2,000 snippets with Unicode and concealed bodies. The baseline used the `6e01511` implementation plus the measurement-only navigation extension to `representativeSearchBenchmark`; the final run includes the record-observation fix.
+
+| Model operation | Before p50 / p95 | After p50 / p95 |
+| --- | --- | --- |
+| Search, 80 alternating queries | 9.94 / 18.49 ms | 7.29 / 13.31 ms |
+| Warm arrow selection and selected-record lookup, 80 batches of 10 steps | 20.994 / 33.309 ms | 0.006 / 0.008 ms |
+
+The model keeps one sorted array and one query result per visited section. Repeated render/selection calls reuse those results; every record replacement, including locking, clears them. Cache hits still read the observable record property so SwiftUI can react to captures and edits. No key, query or result cache is persisted, and no background indexing crosses the session boundary.
+
+Reproduce with `COPYSAVER_BENCHMARKS=1 ./scripts/swift.sh test -c release --disable-xctest --filter representativeSearchBenchmark`. Search measures filtering plus any required ordering. Navigation is measured after the query is established and includes model selection/lookup plus synthetic assertions. It does not include SwiftUI rendering, AppKit event delivery, clipboard I/O or native panel latency; no wall-clock threshold is asserted. Targeted invalidation, observation and dirty-draft navigation regressions pass; the observation regression first failed before the fix. M4-05 native measurements remain pending.

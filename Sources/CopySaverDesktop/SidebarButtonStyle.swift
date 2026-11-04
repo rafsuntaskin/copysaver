@@ -4,6 +4,8 @@ import SwiftUI
 /// to a fixed row, without native plain-button dimming or layout animation.
 struct SidebarButtonStyle: ButtonStyle {
     var selected = false
+    var horizontalPadding: CGFloat = 12
+    var verticalPadding: CGFloat = 10
     @Environment(\.isEnabled) private var enabled
     @Environment(\.isFocused) private var focused
     @Environment(\.controlActiveState) private var activeState
@@ -14,7 +16,7 @@ struct SidebarButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: selected ? .semibold : .regular))
-            .padding(.horizontal, 12).padding(.vertical, 10)
+            .padding(.horizontal, horizontalPadding).padding(.vertical, verticalPadding)
             .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
             .foregroundStyle(Color.primary.opacity(enabled ? 1 : 0.4))
             .background {

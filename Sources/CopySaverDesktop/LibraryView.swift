@@ -6,6 +6,7 @@ struct LibraryView: View {
     @Bindable var model: DesktopModel
     /// Nil discovers installed apps; render fixtures inject a synthetic list.
     var applicationSuggestions: [(id: String, name: String)]? = nil
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
@@ -25,7 +26,7 @@ struct LibraryView: View {
                     if model.phase != .unlocked { VaultGateView(model: model) }
                     else if model.section == .settings { SettingsView(model: model, applicationSuggestions: applicationSuggestions) }
                     else if model.compactShowDetail { detail }
-                    else { itemList }
+                    else { itemList(compact: true) }
                 }
             } else { wideLayout }
         }
@@ -43,7 +44,7 @@ struct LibraryView: View {
                 if model.section == .settings {
                     SettingsView(model: model, applicationSuggestions: applicationSuggestions)
                 } else {
-                    itemList.frame(width: 320)
+                    itemList().frame(width: 320)
                     Divider()
                     detail.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -55,9 +56,13 @@ struct LibraryView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
-            VStack(alignment: .leading, spacing: 5) {
-                Label("CopySaver", systemImage: "clipboard").font(.system(size: 17, weight: .semibold))
-                Text("Clipboard & snippets").font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Image(systemName: "clipboard").font(.system(size: 18)).frame(width: 32, height: 32)
+                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("CopySaver").font(.system(size: 16, weight: .semibold))
+                    Text("Clipboard & snippets").font(.system(size: 10)).foregroundStyle(.secondary)
+                }
             }.padding(.horizontal, 12).padding(.bottom, 24)
             ForEach([LibrarySection.history, .snippets, .pinned]) { section in
                 Button {
@@ -98,40 +103,62 @@ struct LibraryView: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private var itemList: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text(model.section.rawValue).font(.system(size: 18, weight: .semibold))
-                TextField("Search", text: $model.libraryQuery)
-                    .font(.system(size: 12)).textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Search \(model.section.rawValue)")
-                if model.section == .snippets {
-                    Menu {
-                        ForEach(SnippetTemplate.allCases) { template in Button("New \(template.rawValue.lowercased()) snippet") { model.beginSnippet(template: template) } }
-                    } label: { Image(systemName: "plus") }.help("New snippet").disabled(model.isPreview || model.isBusy)
+    private func itemList(compact: Bool = false) -> some View {
+        let visible = model.items(query: model.libraryQuery)
+        return VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text(model.section.rawValue).font(.system(size: 20, weight: .semibold))
+                    Spacer()
+                    if model.section == .snippets {
+                        Menu {
+                            ForEach(SnippetTemplate.allCases) { template in Button("New \(template.rawValue.lowercased()) snippet") { model.beginSnippet(template: template) } }
+                        } label: { Image(systemName: "plus") }.help("New snippet").accessibilityLabel("New snippet")
+                            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().disabled(model.isPreview || model.isBusy)
+                    }
                 }
-            }.padding(.horizontal, 16).padding(.top, 48).padding(.bottom, 20)
-            Divider()
-            ScrollView {
-                LazyVStack(spacing: 3) {
-                    if model.isPreview {
-                        Text("SAMPLE DATA").font(.system(size: 10, weight: .medium)).tracking(1)
-                            .foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.top, 14)
-                    }
-                    ForEach(model.items(query: model.libraryQuery)) { record in
-                        RecordRow(record: record, selected: record.id == model.selectedID) { model.selectRecord(record.id) }
-                            .contextMenu {
-                                Button("Copy") { if model.selectRecord(record.id) { model.copySelection() } }.disabled(model.isPreview)
-                                Button("Delete", role: .destructive) { if model.selectRecord(record.id) { model.deleteSelection() } }.disabled(model.isPreview || model.isBusy)
+                LibrarySearchField(text: $model.libraryQuery, prompt: "Search \(model.section.rawValue.lowercased())", focus: $searchFocused,
+                                   submit: { model.copySelection() }, move: { model.moveSelection($0, query: model.libraryQuery) })
+                HStack {
+                    Text(model.isPreview ? "SAMPLE DATA" : model.libraryQuery.isEmpty ? (model.section == .snippets ? "YOUR SNIPPETS" : "RECENT") : "RESULTS")
+                        .font(.system(size: 10, weight: .semibold)).tracking(0.7)
+                    Spacer()
+                    Text("\(visible.count)").font(.system(size: 11)).monospacedDigit()
+                }.foregroundStyle(.secondary)
+            }.padding(.horizontal, 18).padding(.top, compact ? 18 : 48).padding(.bottom, 12)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(visible) { record in
+                            RecordRow(record: record, selected: record.id == model.selectedID) { model.selectRecord(record.id) }
+                                .id(record.id)
+                                .contextMenu {
+                                    Button("Copy") { if model.selectRecord(record.id) { model.copySelection() } }.disabled(model.isPreview || model.isBusy)
+                                    Button("Delete", role: .destructive) { if model.selectRecord(record.id) { model.deleteSelection() } }.disabled(model.isPreview || model.isBusy)
+                                }
+                        }
+                    }.padding(.horizontal, 8).padding(.bottom, 8)
+                }
+                .overlay {
+                    if visible.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: model.libraryQuery.isEmpty ? "tray" : "magnifyingglass").font(.system(size: 22))
+                            Text(model.libraryQuery.isEmpty ? "No saved text yet" : "No matching text").font(.system(size: 13, weight: .medium))
+                            if !model.libraryQuery.isEmpty { Button("Clear search") { model.libraryQuery = "" }.buttonStyle(.bordered) }
+                            else if compact && model.section == .snippets {
+                                Button("New snippet") { model.beginSnippet() }.disabled(model.isBusy || model.isPreview)
                             }
+                        }.foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                }.padding(8)
+                }
+                .onChange(of: model.selectedID) { _, id in if let id { proxy.scrollTo(id) } }
             }
             Divider()
-            HStack {
-                Text(model.isPreview ? "UI preview only" : "Encrypted locally").font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Image(systemName: model.isPreview ? "eye" : "externaldrive.badge.checkmark")
+                Text(model.isPreview ? "UI preview only" : "Stored on this Mac")
                 Spacer()
-            }.padding(16)
+            }.font(.system(size: 11)).foregroundStyle(.secondary).padding(.horizontal, 18).padding(.vertical, 13)
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -141,56 +168,74 @@ struct LibraryView: View {
             SnippetEditorView(model: model)
         } else if let record = model.selectedRecord {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(record.isSensitive ? "SENSITIVE SNIPPET" : "PLAIN TEXT")
-                        .font(.system(size: 11, weight: .medium)).tracking(1).foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    Text(record.isSensitive ? "HIDDEN PREVIEW" : "PLAIN TEXT")
+                        .font(.system(size: 10, weight: .semibold)).tracking(0.7).foregroundStyle(.secondary)
                     Spacer()
-                    if record.isSensitive { Image(systemName: model.requiresSensitiveAuthentication ? "lock" : "eye.slash").foregroundStyle(.secondary).accessibilityLabel("Sensitive snippet") }
-                }.padding(.top, 58).padding(.bottom, 28)
-                if case .snippet = record.payload { Text(verbatim: record.displayTitle).font(.title2.weight(.semibold)).padding(.bottom, 20) }
-                HStack {
                     if case .history(let item) = record.payload {
-                        Button(item.isPinned ? "Unpin" : "Pin") { model.toggleSelectedPin() }
-                        Button("Save as snippet") { model.promoteSelection() }
-                    } else { Button("Edit snippet") { model.editSelection() } }
-                    Spacer()
-                    Button("Delete", role: .destructive) { model.deleteSelection() }
-                }.font(.system(size: 12)).padding(.bottom, 18).disabled(model.isPreview || model.isBusy)
+                        Button { model.toggleSelectedPin() } label: { Image(systemName: item.isPinned ? "pin.fill" : "pin") }
+                            .help(item.isPinned ? "Unpin" : "Pin").accessibilityLabel(item.isPinned ? "Unpin" : "Pin")
+                    } else {
+                        Button { model.editSelection() } label: { Label("Edit", systemImage: "square.and.pencil") }
+                    }
+                    Menu {
+                        Button("Delete", role: .destructive) { model.deleteSelection() }
+                    } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .help("More actions").accessibilityLabel("More actions")
+                }.buttonStyle(.bordered).controlSize(.small).disabled(model.isPreview || model.isBusy)
+                    .padding(.top, 48).padding(.bottom, 20)
+                if case .snippet = record.payload {
+                    Text(verbatim: record.displayTitle).font(.system(size: 21, weight: .semibold)).lineLimit(3).padding(.bottom, 10)
+                }
+                HStack(spacing: 7) {
+                    Label(record.subtitle, systemImage: record.symbol)
+                    if case .history(let item) = record.payload { Text("·"); HistoryAgeLabel(date: item.lastSeenAt) }
+                    if record.isSensitive { Image(systemName: "eye.slash").accessibilityLabel("Preview hidden") }
+                }.font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1).padding(.bottom, 22)
                 if record.isSensitive {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
+                    if model.revealedID == record.id {
+                        ScrollView {
                             Text(verbatim: model.detailText(for: record)).font(.system(size: 14, design: .monospaced))
-                                .accessibilityLabel(model.revealedID == record.id ? record.content : "Sensitive content, concealed")
-                            if model.revealedID == record.id {
-                                Button("Hide text") { model.concealSensitiveContent() }
-                            } else {
-                                Button("Show text") { model.revealSelection() }.disabled(model.isPreview || model.isBusy)
-                                Text("Hidden again after 30 seconds or when you leave the app.")
-                                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                            }
-                        }.frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(maxWidth: .infinity, alignment: .leading).accessibilityLabel(record.content)
+                        }
+                        Button("Hide text") { model.concealSensitiveContent() }.padding(.top, 12)
+                    } else {
+                        VStack(spacing: 14) {
+                            Image(systemName: "eye.slash").font(.system(size: 25)).foregroundStyle(.secondary)
+                            Text("Text hidden").font(.system(size: 16, weight: .semibold))
+                            Text("Hidden in previews and body search.").font(.system(size: 12)).foregroundStyle(.secondary)
+                            Button("Show text") { model.revealSelection() }.buttonStyle(.bordered).disabled(model.isPreview || model.isBusy)
+                            Text("Hidden again after 30 seconds or when you leave the app.")
+                                .font(.system(size: 11)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 260)
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(20).background(Color(nsColor: .windowBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
                     }
                 } else {
                     VaultTextEditor(text: .constant(record.content), editable: false, accessibilityName: "Saved text") { text, _ in
                         model.copySelection(selectedText: text)
-                    }
+                    }.id(record.id)
                 }
-                Spacer(minLength: 24)
-                Label(record.subtitle, systemImage: record.symbol).font(.system(size: 12)).foregroundStyle(.secondary).padding(.bottom, 16)
                 if case .history(let value) = record.payload {
                     Text("Captured \(value.firstSeenAt.formatted(date: .abbreviated, time: .shortened)) · seen \(value.repeatCount) \(value.repeatCount == 1 ? "time" : "times")")
-                        .font(.caption).foregroundStyle(.secondary).padding(.bottom, 6)
-                    if let date = value.lastCopiedAt { Text("Last copied \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary).padding(.bottom, 6) }
+                        .font(.system(size: 11)).foregroundStyle(.secondary).padding(.top, 18)
+                    if let date = value.lastCopiedAt {
+                        Text("Last copied \(date.formatted(date: .abbreviated, time: .shortened))").font(.system(size: 11)).foregroundStyle(.secondary).padding(.top, 4)
+                    }
                 }
-                FeedbackView(model: model)
+                FeedbackView(model: model).frame(minHeight: 30, alignment: .leading)
                 Divider()
                 HStack {
-                    Label(model.isPreview ? "Sample data only" : "Encrypted locally", systemImage: model.isPreview ? "eye" : "checkmark.shield")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                    Spacer()
-                    Button { model.copySelection() } label: { Label("Copy", systemImage: "doc.on.doc") }
-                        .buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut("c", modifiers: .command).disabled(!model.canCopy)
-                }.padding(.vertical, 18)
+                    if case .history = record.payload {
+                        Button("Save as snippet") { model.promoteSelection() }.buttonStyle(.bordered).disabled(model.isPreview || model.isBusy)
+                    } else {
+                        Label(model.isPreview ? "Sample data" : "Encrypted locally", systemImage: model.isPreview ? "eye" : "externaldrive.badge.checkmark")
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 12)
+                    Button { model.copySelection() } label: {
+                        HStack(spacing: 14) { Label("Copy", systemImage: "doc.on.doc"); Text("⌘C").font(.system(size: 11)).opacity(0.75).accessibilityHidden(true) }
+                    }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut("c", modifiers: .command).disabled(!model.canCopy)
+                }.padding(.vertical, 16)
             }.padding(.horizontal, 24)
         } else {
             VStack(spacing: 14) {
@@ -236,27 +281,29 @@ struct LibraryView: View {
 struct RecordRow: View {
     let record: VaultRecord
     let selected: Bool
+    var compact = false
     let select: () -> Void
 
     var body: some View {
         Button(action: select) {
-            HStack(alignment: .top, spacing: 13) {
-                Image(systemName: record.symbol).font(.system(size: 18)).frame(width: 26, height: 30).foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 7) {
-                    Text(verbatim: record.displayTitle).font(.system(size: 13, weight: .medium)).lineLimit(2).multilineTextAlignment(.leading)
+            HStack(alignment: .center, spacing: 11) {
+                Image(systemName: record.symbol).font(.system(size: 15)).frame(width: 32, height: 32).foregroundStyle(.secondary)
+                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(verbatim: record.displayTitle).font(.system(size: 13, weight: .medium)).lineLimit(compact ? 1 : 2).multilineTextAlignment(.leading)
                     HStack(spacing: 5) {
                         Text(verbatim: record.subtitle)
-                        if case .history(let item) = record.payload {
-                            Text("·")
-                            HistoryAgeLabel(date: item.lastSeenAt)
-                        }
+                        if case .history(let item) = record.payload { Text("·"); HistoryAgeLabel(date: item.lastSeenAt) }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                if record.isSensitive { Image(systemName: "eye.slash").font(.system(size: 10)).foregroundStyle(.secondary).accessibilityLabel("Preview hidden") }
-            }.padding(.horizontal, 12).padding(.vertical, 15).frame(maxWidth: .infinity)
-                .background(selected ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7))
-                .contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+                if record.isSensitive {
+                    Image(systemName: "eye.slash").font(.system(size: 10)).foregroundStyle(.secondary).accessibilityLabel("Preview hidden")
+                } else if case .history(let item) = record.payload, item.isPinned {
+                    Image(systemName: "pin.fill").font(.system(size: 10)).foregroundStyle(.secondary).accessibilityLabel("Pinned")
+                }
+            }.frame(maxWidth: .infinity, minHeight: compact ? 34 : 42)
+        }.buttonStyle(SidebarButtonStyle(selected: selected, horizontalPadding: 10, verticalPadding: compact ? 8 : 10))
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

@@ -25,6 +25,8 @@ func renderCommunityUIFixtures() async throws {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let preview = DesktopModel(service: nil, clipboard: nil, preview: true, automaticallyOpensVault: true)
     var records = preview.records
+    let long = try VaultRecord(.history(HistoryItem(text: "Synthetic long text\n" + String(repeating: "Exact café 日本語 text with whitespace.  \n", count: 600), firstSeenAt: Date(timeIntervalSince1970: 1_700_000_000), lastSeenAt: Date(timeIntervalSince1970: 1_700_000_000))))
+    records.append(long)
     records.append(try VaultRecord(.settings(VaultSettings(captureEnabled: true))))
     let vault = RenderVault(records)
     let model = DesktopModel(service: vault, clipboard: nil, automaticallyOpensVault: true)
@@ -40,7 +42,19 @@ func renderCommunityUIFixtures() async throws {
         model.compactShowDetail = true
         try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 620, height: 680), to: directory.appendingPathComponent("compact-detail-\(name).png"))
         model.compactShowDetail = false
+        model.selectRecord(long.id)
+        try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 1040, height: 680), to: directory.appendingPathComponent("long-detail-\(name).png"))
+        model.libraryQuery = "Synthetic unmatched query"
+        model.compactShowDetail = false
+        try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 1040, height: 680), to: directory.appendingPathComponent("empty-search-\(name).png"))
+        try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 480, height: 540), to: directory.appendingPathComponent("minimum-empty-\(name).png"))
+        model.libraryQuery = ""; model.selectedID = model.items(query: "").first?.id
+        model.isFocusPresented = true
+        model.focusQuery = "Synthetic unmatched query"
+        try render(FocusView(model: model), scheme: scheme, size: NSSize(width: 640, height: 520), to: directory.appendingPathComponent("focus-empty-\(name).png"))
+        model.focusQuery = ""
         try render(FocusView(model: model), scheme: scheme, size: NSSize(width: 640, height: 520), to: directory.appendingPathComponent("focus-\(name).png"))
+        model.isFocusPresented = false
         model.navigate(to: .snippets)
         model.ensureSelection(query: "")
         if let sensitive = model.items(query: "").first(where: \.isSensitive) { model.selectRecord(sensitive.id) }

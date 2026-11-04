@@ -17,7 +17,12 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
 
 @MainActor @Observable public final class DesktopModel {
     public private(set) var phase: DesktopPhase = .loading
-    public private(set) var records: [VaultRecord] = []
+    public private(set) var records: [VaultRecord] = [] {
+        didSet {
+            sortedItems.removeAll()
+            queryResults.removeAll()
+        }
+    }
     public private(set) var isBusy = false
     public private(set) var errorMessage: String?
     public private(set) var notice: String?
@@ -71,6 +76,10 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     @ObservationIgnored private var manuallyHidden = false
     @ObservationIgnored private var automaticOpenFailed = false
     @ObservationIgnored private var resumeOperation: Task<Void, Never>?
+    // Bounded to one ordering and one query per section, only in the open session.
+    // Every record replacement (including lock's empty array) releases these values.
+    @ObservationIgnored private var sortedItems: [LibrarySection: [VaultRecord]] = [:]
+    @ObservationIgnored private var queryResults: [LibrarySection: (query: String, records: [VaultRecord])] = [:]
 
     func finishPendingOperations() async {
         await operation?.value
@@ -112,11 +121,16 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     public var draftIsConcealed: Bool { isCreatingSnippet && (draftSensitive || editingSnippet?.isSensitive == true) && !draftAuthorized }
     public func navigate(to section: LibrarySection) { self.section = section; libraryQuery = ""; compactShowDetail = false }
     @discardableResult public func selectRecord(_ id: UUID) -> Bool {
+        guard finishDraftForSelection() else { return false }
+        selectedID = id; compactShowDetail = true
+        return true
+    }
+
+    private func finishDraftForSelection() -> Bool {
         if isCreatingSnippet {
             if hasDirtyDraft && onConfirmDiscardDraft?() != true { return false }
             discardDraft()
         }
-        selectedID = id; compactShowDetail = true
         return true
     }
 
@@ -181,25 +195,37 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
 
     public func items(query: String, section explicitSection: LibrarySection? = nil) -> [VaultRecord] {
         guard phase == .unlocked else { return [] }
+        // Read on cache hits too, so SwiftUI continues observing capture/edit updates.
+        let source = records
         let selectedSection = explicitSection ?? section
-        return records.filter { record in
-            let searchable: String
+        if let cached = queryResults[selectedSection], cached.query == query { return cached.records }
+        let ordered: [VaultRecord]
+        if let cached = sortedItems[selectedSection] { ordered = cached }
+        else {
+            ordered = source.filter { record in
+                switch record.payload {
+                case .history(let item): selectedSection == .history || (selectedSection == .pinned && item.isPinned)
+                case .snippet: selectedSection == .snippets
+                default: false
+                }
+            }.sorted { lhs, rhs in
+                if case .history(let left) = lhs.payload, case .history(let right) = rhs.payload {
+                    return left.lastSeenAt > right.lastSeenAt
+                }
+                return lhs.displayTitle.localizedStandardCompare(rhs.displayTitle) == .orderedAscending
+            }
+            sortedItems[selectedSection] = ordered
+        }
+        let matches = query.isEmpty ? ordered : ordered.filter { record in
             switch record.payload {
-            case .history(let item):
-                guard selectedSection == .history || (selectedSection == .pinned && item.isPinned) else { return false }
-                searchable = item.text
+            case .history(let item): return item.text.localizedStandardContains(query)
             case .snippet(let item):
-                guard selectedSection == .snippets else { return false }
-                searchable = item.name + "\n" + (item.category ?? "") + (item.isSensitive ? "" : "\n" + item.body)
+                return (item.name + "\n" + (item.category ?? "") + (item.isSensitive ? "" : "\n" + item.body)).localizedStandardContains(query)
             default: return false
             }
-            return query.isEmpty || searchable.localizedStandardContains(query)
-        }.sorted { lhs, rhs in
-            if case .history(let left) = lhs.payload, case .history(let right) = rhs.payload {
-                return left.lastSeenAt > right.lastSeenAt
-            }
-            return lhs.displayTitle.localizedStandardCompare(rhs.displayTitle) == .orderedAscending
         }
+        queryResults[selectedSection] = (query, matches)
+        return matches
     }
 
     public func ensureSelection(query: String) {
@@ -213,7 +239,9 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         let visible = items(query: query)
         guard !visible.isEmpty else { return }
         let index = visible.firstIndex { $0.id == selectedID } ?? 0
-        selectedID = visible[min(max(index + delta, 0), visible.count - 1)].id
+        let next = visible[min(max(index + delta, 0), visible.count - 1)].id
+        guard next != selectedID, finishDraftForSelection() else { return }
+        selectedID = next
     }
 
     public func start() {
