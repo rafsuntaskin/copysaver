@@ -46,7 +46,8 @@ def resolve(value):
     return value
 info = resolve(info)
 info['CopySaverStorageProfile'] = 'automatic'
-info['NSFaceIDUsageDescription'] = 'Authenticate to reveal, copy or edit sensitive snippets.'
+# The community profile never requests device-owner authentication.
+info.pop('NSFaceIDUsageDescription', None)
 Path(sys.argv[2]).write_bytes(plistlib.dumps(info))
 PY
 

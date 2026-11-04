@@ -16,6 +16,7 @@ app = Path(sys.argv[1]).resolve()
 info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
 require(info["CFBundleIdentifier"] == "org.copysaver.CopySaver.community", "Unexpected community app identity.")
 require(info["CopySaverStorageProfile"] == "automatic", "Automatic storage profile required.")
+require("NSFaceIDUsageDescription" not in info, "Community app must not advertise device-owner authentication.")
 require(info["CopySaverURLScheme"] == "copysaver-community", "Unexpected community navigation scheme.")
 widget = app / "Contents/PlugIns/CopySaverWidget.appex"
 widget_info = plistlib.loads((widget / "Contents/Info.plist").read_bytes())
