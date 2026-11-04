@@ -282,7 +282,7 @@ public enum CopySaverApplication {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "clipboard", accessibilityDescription: "CopySaver")
         let menu = NSMenu()
-        for (title, action) in [("Open Focus Mode", #selector(toggleFocus)), ("Open Library", #selector(openLibrary)), ("Lock Vault", #selector(lockVault)), ("Quit CopySaver", #selector(quit))] {
+        for (title, action) in [("Open Focus Mode", #selector(toggleFocus)), ("Open Library", #selector(openLibrary)), (model.lockActionTitle, #selector(lockVault)), ("Quit CopySaver", #selector(quit))] {
             let entry = NSMenuItem(title: title, action: action, keyEquivalent: title == "Quit CopySaver" ? "q" : "")
             entry.target = self
             menu.addItem(entry)
