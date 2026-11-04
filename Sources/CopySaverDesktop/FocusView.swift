@@ -25,8 +25,7 @@ struct FocusView: View {
                         Text("Snippets").tag(LibrarySection.snippets)
                     }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("History or snippets").frame(width: 220)
                     Spacer()
-                    Label(model.captureStatus, systemImage: model.isPreview ? "eye" : "pause.circle")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    CaptureStatusView(model: model)
                 }.padding(.horizontal, 22).padding(.bottom, 16)
                 Divider()
                 ScrollViewReader { proxy in
@@ -54,7 +53,8 @@ struct FocusView: View {
                         model.libraryQuery = model.focusQuery
                         model.onOpenLibrary?()
                     }.buttonStyle(.plain)
-                    Button { model.lock() } label: { Image(systemName: "lock") }.buttonStyle(.plain).help(model.lockActionTitle)
+                    Button { model.lock() } label: { Image(systemName: model.lockActionSymbol) }.buttonStyle(.plain)
+                        .help(model.lockActionTitle).accessibilityLabel(model.lockActionTitle)
                 }.font(.system(size: 11)).foregroundStyle(.secondary).padding(17)
             } else {
                 VaultGateView(model: model)
@@ -88,6 +88,7 @@ private struct AppearanceSettings: View {
 
 struct SettingsView: View {
     @Bindable var model: DesktopModel
+    var applicationSuggestions: [(id: String, name: String)]? = nil
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -96,7 +97,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("General").font(.headline)
                     AppearanceSettings()
-                    LoginSettingsView(preview: model.isPreview)
+                    LoginSettingsView(preview: model.isPreview, automaticallyOpensVault: model.automaticallyOpensVault)
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 12) {
@@ -110,27 +111,41 @@ struct SettingsView: View {
                     if let message = model.shortcutMessage { Label(message, systemImage: "exclamationmark.circle").foregroundStyle(.secondary) }
                 }
                 Divider()
-                HistorySettingsView(model: model)
+                HistorySettingsView(model: model, applicationSuggestions: applicationSuggestions)
                 Divider()
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Privacy & Security").font(.headline)
-                    Text(model.automaticallyOpensVault ? "Your library opens automatically. Saved text is encrypted, with its key kept separately in your macOS login Keychain. Hide and pause clears the interface and stops capture until you reopen it." : "Stored content is encrypted locally. Locking pauses capture and clears decrypted content from the interface.")
-                    if model.automaticallyOpensVault {
-                        Text("A copied database cannot be read without its key. This does not protect against someone controlling your unlocked account or able to unlock your Keychain. Sensitive snippet actions still ask for authentication.").foregroundStyle(.secondary)
-                        Text("This library is separate from earlier protected builds. Those saved items remain in the earlier app; they are not automatically imported.").foregroundStyle(.secondary)
-                    }
-                    Text("Portable encrypted backup is not available yet. Keep another copy of important information.").foregroundStyle(.secondary)
-                }
+                LibraryPrivacySection(model: model)
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Sidebar & desktop widget").font(.headline)
                     Text("In a build with the widget extension, open Notification Center, choose Edit Widgets, search for CopySaver, and add the small or medium launcher. Drag a widget to the desktop if you prefer. Widgets contain navigation only; saved text stays inside the app.").foregroundStyle(.secondary)
                     Divider()
                     Text("About CopySaver").font(.headline)
-                    Text("Development build · local storage · MIT license").foregroundStyle(.secondary)
+                    Text(versionLabel).foregroundStyle(.secondary)
+                    Text("\(model.automaticallyOpensVault ? "Automatic library" : "Protected library") · local storage · MIT license").foregroundStyle(.secondary)
                 }
             }.font(.system(size: 13)).padding(.top, 60).padding(.horizontal, 36).padding(.bottom, 36).frame(maxWidth: 660, alignment: .leading)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var versionLabel: String {
+        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String else { return "Development preview" }
+        return "Version \(version) (\(build))"
+    }
+}
+
+struct LibraryPrivacySection: View {
+    var model: DesktopModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Privacy & Storage").font(.headline)
+            Label("Encrypted on this Mac", systemImage: "externaldrive.badge.checkmark")
+            Text(model.automaticallyOpensVault ? "Your library opens automatically with your user session. Hide and pause clears the interface and stops capture until you reopen it." : "Locking pauses capture and clears decrypted content from the interface.").foregroundStyle(.secondary)
+            if model.automaticallyOpensVault {
+                Text("Sensitive snippets hide their text in previews and search. Choose Show text or Edit snippet when you need the body.").foregroundStyle(.secondary)
+            }
+            Text("Portable encrypted backup is not available yet. Keep another copy of important information.").foregroundStyle(.secondary)
+        }.fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -142,6 +157,7 @@ struct AppearanceRoot<Content: View>: View {
 
 private struct HistorySettingsView: View {
     @Bindable var model: DesktopModel
+    var applicationSuggestions: [(id: String, name: String)]? = nil
     @State private var count = 1_000
     @State private var days = 30
     @State private var timeout = IdleLockTimeout.fifteenMinutes
@@ -159,7 +175,7 @@ private struct HistorySettingsView: View {
                     .disabled(model.isPreview || model.isBusy)
                 Text(model.automaticallyOpensVault ? "Capture starts when the app opens and resumes after sleep. Pause and History off are remembered. Copies made before starting or resuming are skipped." : "Capture pauses while locked. Copies made before enabling or resuming are skipped.").foregroundStyle(.secondary)
                 HStack {
-                    Label(model.captureStatus, systemImage: model.captureConditions.canCapture ? "record.circle" : "pause.circle")
+                    CaptureStatusView(model: model)
                     if settings.captureEnabled {
                         Button(settings.manuallyPaused ? "Resume" : "Pause") { model.toggleCapturePause() }.disabled(model.isBusy || model.isPreview)
                     }
@@ -199,7 +215,7 @@ private struct HistorySettingsView: View {
                     Button("Apply history settings") { proposeSettings(settings) }.disabled(model.isBusy || model.isPreview)
                     Button("Clear history…", role: .destructive) { confirmClear = true }.disabled(model.isBusy || model.isPreview)
                 }
-            } else { Text("Unlock the vault to change history preferences.").foregroundStyle(.secondary) }
+            } else { Text(model.automaticallyOpensVault ? "Open your library to change history preferences." : "Unlock the vault to change history preferences.").foregroundStyle(.secondary) }
             Text("Concealed and transient copies are always skipped. Private-key and card-number filters can miss secrets; explicitly save private text as a sensitive snippet.").foregroundStyle(.secondary)
         }
         .task { load() }
@@ -220,7 +236,11 @@ private struct HistorySettingsView: View {
         excluded = settings.excludedBundleIDs.sorted().joined(separator: "\n")
     }
     private var installedManagers: [(id: String, name: String)] {
-        [("com.1password.1password", "1Password"), ("com.agilebits.onepassword7", "1Password 7"),
+        if let applicationSuggestions {
+            let existing = Set(excluded.split(whereSeparator: \.isNewline).map(String.init))
+            return applicationSuggestions.filter { !existing.contains($0.id) }
+        }
+        return [("com.1password.1password", "1Password"), ("com.agilebits.onepassword7", "1Password 7"),
          ("com.bitwarden.desktop", "Bitwarden"), ("org.keepassxc.keepassxc", "KeePassXC")].compactMap { id, name in
             guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) != nil,
                   !excluded.split(whereSeparator: \.isNewline).contains(Substring(id)) else { return nil }

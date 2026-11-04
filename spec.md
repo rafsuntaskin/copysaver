@@ -2,7 +2,7 @@
 
 Status: tested encrypted core and runnable native development scaffold; product/architecture and selected UI baseline approved. Clipboard capture/retention are implemented through testable adapters; widget source and release tooling are implemented; signed platform checks remain pending. Track verified completion below.
 
-Created: October 26, 2026. Last updated: October 29, 2026.
+Created: October 26, 2026. Last updated: November 4, 2026.
 
 ## 0. Delivery checklist and progress
 
@@ -113,8 +113,14 @@ New community-profile work (November 3, 2026), from `main` at `8dbb932` on `feat
 
 These replace the community profile's earlier mandatory user-presence/start-locked/explicit-enable/notarized-release requirements (M1-09/M1-10, M2-09, M4-08/M4-10, FUNC-01/FUNC-09, SEC-05/SEC-06/SEC-11, REL-03/REL-04). Keep historical evidence and IDs; none of it proves the new profile. Remaining encryption, integrity, permission, sensitive-UI and accessibility gates still apply. The current requirement is automatic access to encrypted storage, not app-exclusive access against a compromised user account.
 
+Community UI revision (November 4, 2026): `feat/community-ui` is stacked on `feat/automatic-capture` at `b6b5d67`; integrate the automatic-capture dependency before reviewing/integrating this UI branch. The user explicitly trusts the open account/session, so community Sensitive snippets use preview/search/accessibility masking, explicit reveal/edit and clipboard expiry without extra authentication. The protected compatibility profile retains fresh authentication. This supersedes community sensitive-authentication wording in sections 4.2/4.4/7 and M3-04/SEC-07; it does not change encryption or OS-controlled Keychain/clipboard approvals.
+
+- [x] **UI-01** Replace stale community authentication/lock/login/reset text, make sensitive actions prompt-free inside an open community session, and verify protected behavior remains intact. Evidence: `make verify` passes 97 functional checks (100 registered; two benchmarks and the render fixture skipped), including `communitySensitiveActionsTrustOpenSessionAndKeepConcealment` and protected sensitive-authentication regressions. Community preview/error composition also retains the automatic profile; encryption and Keychain storage remain unchanged.
+- [ ] **UI-02** Refine Library/Focus/settings hierarchy and sidebar button interaction states with stable selection, contained hover/press feedback, keyboard focus, Reduce Motion and native light/dark styling. **Implemented and rendered:** shared fixed-size row styling separates selection, hover, press and focus; clears inactive hover; scopes fades to backgrounds and respects Reduce Motion. `COPY_SAVER_RENDER_UI=1 ./scripts/swift.sh test --disable-xctest --filter renderCommunityUIFixtures` passes and produces synthetic light/dark Library, compact, Focus, snippet/editor, hidden-library, settings/privacy and row-state fixtures under `.build/ui-review/`. Interactive pointer/keyboard/VoiceOver/motion acceptance remains pending; static rendering does not establish it.
+
 | Date | Change / IDs | Validation / evidence | Blockers / next action |
 | --- | --- | --- | --- |
+| 2026-11-04 | UI-01 complete; UI-02 implemented and rendered on stacked `feat/community-ui` | `make verify` passes 97 functional Swift checks (100 registered, three opt-in checks skipped), 18 probe admission guards and static project/docs/shell checks. Five targeted community/protected policy tests pass. The opt-in synthetic render fixture passes; light/dark Library, Focus, settings/privacy, sensitive/editor, compact and sidebar states inspected. Community actions no longer invoke sensitive authentication; protected regressions retain it. App/widget version advances to 0.1.0 (2) | Next: package build 2 from committed source, then native pointer/keyboard/VoiceOver/Reduce Motion and AUTO-02 OS lifecycle/permission checks. Personal Xcode edits are preserved; no user vault or installed app changed, no publication. |
 | 2026-11-03 | AUTO-03 complete for local packaging; final artifact built from `56d3631` | Clean tracked-source export with private temporary Git index passes `make community-dmg`; committed source excludes the user's personal Xcode changes. Final `.build/community/CopySaver-community.dmg` passes SHA-256, `hdiutil verify` and app/widget signature/architecture/entitlement audit. Build manifests record the exact revision and clean source | Next: AUTO-02 native first-run permission/capture and real sleep/wake validation, then clean-Mac/update/widget/AX/OS gates. CUA native pipe remains unavailable. Feature branch remains local and unmerged; no publication, notarization, Apple signing key or protected-vault migration. |
 | 2026-11-03 | AUTO-03 packaging records a fixed source revision | Community packaging captures HEAD before compilation and checks tracked source/index against that revision before marking a clean build. Shell syntax validation passes. Artifact checks also pass with Python optimization enabled and reject the development identity | Complete the committed-source rebuild before checking AUTO-03; no clean-Mac or update approval claimed. |
 | 2026-11-03 | AUTO-02 first-run permission guidance follows actual capture state | Empty History now offers Request clipboard access/Open System Settings, Resume capture or Enable history as appropriate, rather than always asking to enable already-enabled history. The request discards current clipboard content through the existing permission adapter. `./scripts/swift.sh build --product CopySaverDev` and static docs/project checks pass | Native visual/OS permission validation remains pending because CUA cannot initialize; committed-source packaging follows. |
@@ -176,7 +182,7 @@ CopySaver is a clipboard utility with protected snippets, not a full password ma
 | Persistence | SQLite through the system SQLite library; encrypted record payloads | Transactions and recovery without a large dependency or plaintext content columns. |
 | Encryption | AES-256-GCM through CryptoKit | Authenticated encryption using an OS-provided implementation. |
 | Key storage | Community build: macOS login Keychain, calling-app ACL, random vault key; protected build retained for compatibility | The key is separate from the database. No Apple-issued certificate or fresh user presence is required for ordinary community-vault reads. Login Keychain locking, denial or changed ad-hoc identity can require OS approval. |
-| Unlock | Automatic community-vault open at launch and resume after sleep; explicit retry on Keychain errors | No recurring CopySaver unlock prompt. Sensitive snippet actions retain fresh system authentication as a UI safeguard. |
+| Unlock | Automatic community-vault open at launch and resume after sleep; explicit retry on Keychain errors | No recurring CopySaver unlock or sensitive-action prompt in the open community library. Protected compatibility builds retain their original authentication. |
 | Lock behavior | Pause capture and remove usable vault state from memory | A locked app must not continue retaining its vault key for background capture. |
 | Content | Plain text only in the MVP | URLs, code, addresses, and multiline text work without processing attachments or rich content. |
 | Paste behavior | Copy to clipboard; user pastes with Command-V | No Accessibility permission or simulated keystrokes in the MVP. |
@@ -194,7 +200,7 @@ The community profile retains App Sandbox and hardened runtime with no restricte
 
 For this profile, **new vaults enable capture by default**, with a visible status and immediate Pause/Disable controls. Existing saved disable/manual-pause preferences are never overridden. OS clipboard approval remains necessary where enforced. Open establishes a baseline without reading the current clipboard; only new copies are captured.
 
-Sleep/session inactivity closes capture admission, invalidates pending work, clears sensitive clipboard ownership and decrypted presentation, then resumes automatically on the corresponding return event. Ordinary idle time does not pause capture. Explicit Hide and pause remains paused until the user explicitly resumes; it is a presentation/privacy action, not an authentication boundary. A failed key read is shown once with Retry; no repeated background prompts or key regeneration. Sensitive snippet reveal/copy/edit still requires fresh `LocalAuthentication`, which protects UI actions rather than making the automatically loaded encryption key presence-bound.
+Sleep/session inactivity closes capture admission, invalidates pending work, clears sensitive clipboard ownership and decrypted presentation, then resumes automatically on the corresponding return event. Ordinary idle time does not pause capture. Explicit Hide and pause remains paused until the user explicitly resumes; it is a presentation/privacy action, not an authentication boundary. A failed key read is shown once with Retry; no repeated background prompts or key regeneration. Community Sensitive snippets retain masking, reveal expiry, search exclusion and clipboard cleanup without additional authentication inside an open library. The protected profile retains fresh authentication.
 
 ## 3. Release boundaries
 
@@ -247,7 +253,7 @@ Successful setup requires no terminal, admin helper, Accessibility permission, I
 - Arrow keys change selection. Return copies the selection and closes the panel after success. Escape dismisses it. Command-C copies without dismissing it.
 - Dismissing after copy returns focus to the previously active app when possible. It does not simulate Paste; the user presses Command-V in that app.
 - Provide an Open Library action that opens the full window and carries the selected item and view across when unlocked. Opening the full window dismisses the panel.
-- A sensitive selection prompts for authentication before copying. Cancellation leaves the clipboard unchanged.
+- Community sensitive selections copy without additional authentication in the open library. The protected profile still prompts; cancellation leaves the clipboard unchanged. Both mark/expire owned sensitive copies.
 - Keep focus and VoiceOver behavior consistent with native panels.
 - If locked, show an unlock action without item names, previews, counts, or previous queries.
 
@@ -271,12 +277,12 @@ Successful setup requires no terminal, admin helper, Accessibility permission, I
 - Optional category: General, Address, Card, or a custom label of up to 60 characters.
 - Templates seed editable plain text. They do not create a separate autofill or payment integration.
 - Card template contains cardholder, card number, and expiration placeholders; it defaults to Sensitive and has no CVV or PIN field.
-- Existing sensitive content cannot be edited, revealed, copied, or changed to nonsensitive without fresh system authentication.
+- Community sensitive content is concealed until explicit reveal/edit; copying, editing and changing preview sensitivity do not require additional authentication inside the open library. The protected profile retains fresh authentication for these actions.
 - Titles and category names remain visible while the vault is unlocked. Sensitive body previews are masked, including in accessibility output.
 - Sensitive reveal lasts at most 30 seconds and ends immediately on window dismissal, app deactivation, or vault lock.
-- Copying a sensitive snippet requires fresh authentication each time, even during a reveal session.
+- Copying a sensitive snippet uses a concealed clipboard marker and owned-copy expiry. Only the protected profile requires fresh authentication each time.
 - Sensitive bodies are excluded from ordinary search results and indexes. Search matches their names and categories only.
-- Sensitive is an additional interface/authentication policy. All records already have the same encryption at rest; it is not a separate cryptographic compartment inside the running app.
+- Sensitive is an additional preview/clipboard policy in the community profile and an interface/authentication policy in the protected profile. All records have the same encryption at rest; it is not a separate cryptographic compartment inside the running app.
 
 ### 4.5 Sidebar widget
 
@@ -534,7 +540,7 @@ These are measurement targets, not claims of completed validation. Record refere
 - [ ] **SEC-04** A copied database cannot be opened by a fresh installation without its key. Missing-key handling preserves the original vault. **In progress:** native isolated-owner key removal refuses unlock/writes, preserves exact DB/WAL/SHM bytes and does not generate a replacement key. Copied-database/fresh-install testing remains pending.
 - [x] **SEC-05** Validate Keychain user-presence enforcement and app identity restrictions using signed builds, including a separately signed helper that must not retrieve the key. Debug-only tests are insufficient evidence. Evidence: Apple Development Release owner/helper fixtures on Apple silicon macOS 26.6.2 have audited separate own groups, sandbox/hardened runtime and no debugger entitlement. UI-forbidden own-key reads return interaction-required before both successful helper controls; the helper cannot see the owner item, cleans up its control, and owner exact-text reads pass before/after. User confirms both repeat-helper prompts and owner Touch ID. See [signed evidence](docs/keychain-validation.md#user-presence-negative-control-october-29-2026). Production Developer ID/minimum-OS validation and separate cancellation cases remain open.
 - [ ] **SEC-06** Verify lock, sleep, fast user switching, idle timeout, and termination paths. Race delayed reads, commits, and searches against lock; no stale content may reappear or commit after Locked is published.
-- [ ] **SEC-07** Denied/cancelled authentication never reveals, edits, or copies sensitive bodies. Masking also holds in accessibility output.
+- [ ] **SEC-07** Community sensitive actions require no additional authentication in an open library, preserve concealed accessibility/search output, and reject stale actions after deactivation/hide. Protected-profile denied/cancelled authentication never reveals, edits, or copies sensitive bodies. Native VoiceOver validation remains required for both profiles.
 - [ ] **SEC-08** Sensitive auto-clear does not overwrite a newer external clipboard item. Test timer expiry, sleep/wake, lock, and ownership-marker replacement. **In progress:** In-memory tests pass for preexisting replacement, marker replacement and replacement during marker reads; production-layer tests cover expiry/lock. Real pasteboard timing, sleep/wake and the residual final-check/clear interval remain pending.
 - [ ] **SEC-09** Concealed/transient markers and excluded-app transitions prevent persistence in tested cases; document attribution limits and residual races.
 - [ ] **SEC-10** Audit entitlements and observe runtime network activity: the app has no networking or content-bearing diagnostics in v0.1.

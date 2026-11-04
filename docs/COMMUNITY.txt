@@ -26,8 +26,10 @@ device. CopySaver does not change FileVault or other system security settings.
 
 Keychain approval may be necessary after an ad-hoc app update. A blocked key read
 stops capture and preserves the vault; Open library explicitly retries OS access.
-Sensitive snippet reveal/copy/edit still asks for fresh macOS authentication as
-a UI safeguard, not a separate cryptographic compartment.
+Sensitive snippets conceal their text in previews and body search. Show, copy and
+edit do not ask for additional authentication in an open community library.
+Explicit reveal expires after 30 seconds or on app deactivation. This is preview
+privacy, not a separate cryptographic compartment or authentication boundary.
 
 This community library is separate from the earlier protected builds. Existing
 protected keys and libraries are not migrated, deleted or read by this version.

@@ -1,33 +1,5 @@
 import Foundation
-import LocalAuthentication
 import Security
-
-public protocol SensitiveAuthenticator: Sendable {
-    func authenticate() async throws
-}
-
-public struct SystemSensitiveAuthenticator: SensitiveAuthenticator {
-    public init() {}
-
-    public func authenticate() async throws {
-        let attempt = AuthenticationAttempt(reason: "Access a sensitive CopySaver snippet")
-        try await withTaskCancellationHandler {
-            defer { attempt.context.invalidate() }
-            try Task.checkCancellation()
-            do {
-                let granted = try await attempt.context.evaluatePolicy(
-                    .deviceOwnerAuthentication, localizedReason: "Access a sensitive CopySaver snippet"
-                )
-                try attempt.checkCancellation()
-                guard granted else { throw KeychainFailure.authenticationFailed }
-            } catch let error as LAError {
-                if [.userCancel, .systemCancel, .appCancel].contains(error.code) { throw KeychainFailure.cancelled }
-                throw KeychainFailure.authenticationFailed
-            }
-            try Task.checkCancellation()
-        } onCancel: { attempt.cancel() }
-    }
-}
 
 /// The legacy login Keychain supports ad-hoc apps without provisioned access groups.
 /// SecAccess is deprecated, but is the ACL API for that implementation (Apple TN3137).

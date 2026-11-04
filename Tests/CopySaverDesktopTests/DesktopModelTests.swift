@@ -253,6 +253,39 @@ private func sensitiveRecord() throws -> VaultRecord {
     await model.finishPendingOperations()
 }
 
+@MainActor @Test func communitySensitiveActionsTrustOpenSessionAndKeepConcealment() async throws {
+    let record = try sensitiveRecord()
+    let vault = TestVault(records: [record], authenticationFailure: .cancelled)
+    let clipboard = TestClipboard()
+    let model = DesktopModel(service: vault, clipboard: clipboard, automaticallyOpensVault: true)
+    model.section = .snippets
+    model.start(); await model.finishPendingOperations()
+    #expect(model.phase == .unlocked && !model.requiresSensitiveAuthentication)
+    #expect(model.detailText(for: record) == "Sensitive content")
+    #expect(model.items(query: "private body").isEmpty)
+    model.revealSelection(); await model.finishPendingOperations()
+    #expect(model.revealedID == record.id)
+    model.setPresentationActive(false)
+    #expect(model.revealedID == nil)
+    model.setPresentationActive(true)
+    model.copySelection(); await model.finishPendingOperations()
+    #expect(clipboard.copies == 1 && model.notice == "Copied")
+    model.editSelection(); await model.finishPendingOperations()
+    #expect(model.editingSnippet?.id == record.id && !model.draftIsConcealed)
+    model.setPresentationActive(false); model.setPresentationActive(true)
+    #expect(model.draftIsConcealed)
+    model.resumeSensitiveDraft(); await model.finishPendingOperations()
+    #expect(!model.draftIsConcealed)
+    model.draftBody = "Synthetic revised community body"
+    model.draftSensitive = false
+    model.saveDraft(); await model.finishPendingOperations()
+    #expect(model.selectedRecord?.content == "Synthetic revised community body")
+    #expect(model.selectedRecord?.isSensitive == false)
+    #expect(await vault.authenticationCalls == 0)
+    model.lock(); await model.finishPendingOperations()
+    #expect(model.records.isEmpty && model.draftBody.isEmpty)
+}
+
 @MainActor @Test func lateSensitiveCopyCannotResumeAfterDeactivationAndReactivation() async throws {
     let gate = TestGate()
     let vault = TestVault(records: [try sensitiveRecord()], authenticationGate: gate)
@@ -333,10 +366,10 @@ private func sensitiveRecord() throws -> VaultRecord {
     model.start(); await model.finishPendingOperations(); await model.unlock()?.value
     model.editSelection(); await model.finishPendingOperations()
     #expect(await vault.authenticationCalls == 1)
-    #expect(model.editingSnippet?.id == record.id && !model.draftNeedsAuthentication)
+    #expect(model.editingSnippet?.id == record.id && !model.draftIsConcealed)
     model.draftSensitive = false
     model.setPresentationActive(false)
-    #expect(model.draftNeedsAuthentication)
+    #expect(model.draftIsConcealed)
     model.setPresentationActive(true)
     model.resumeSensitiveDraft(); await model.finishPendingOperations()
     #expect(await vault.authenticationCalls == 2)

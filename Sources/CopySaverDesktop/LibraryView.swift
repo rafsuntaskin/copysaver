@@ -4,6 +4,8 @@ import SwiftUI
 
 struct LibraryView: View {
     @Bindable var model: DesktopModel
+    /// Nil discovers installed apps; render fixtures inject a synthetic list.
+    var applicationSuggestions: [(id: String, name: String)]? = nil
 
     var body: some View {
         GeometryReader { geometry in
@@ -17,11 +19,11 @@ struct LibraryView: View {
                             ForEach(LibrarySection.allCases) { Text($0.rawValue).tag($0) }
                         }.labelsHidden().accessibilityLabel("Library section")
                         Button { model.onOpenFocus?() } label: { Image(systemName: "magnifyingglass") }.help("Open Focus mode")
-                        Button { model.lock() } label: { Image(systemName: "lock") }.help(model.lockActionTitle)
+                        Button { model.lock() } label: { Image(systemName: model.lockActionSymbol) }.help(model.lockActionTitle)
                     }.padding(.horizontal, 18).padding(.top, 40).padding(.bottom, 12)
                     Divider()
                     if model.phase != .unlocked { VaultGateView(model: model) }
-                    else if model.section == .settings { SettingsView(model: model) }
+                    else if model.section == .settings { SettingsView(model: model, applicationSuggestions: applicationSuggestions) }
                     else if model.compactShowDetail { detail }
                     else { itemList }
                 }
@@ -35,11 +37,11 @@ struct LibraryView: View {
 
     private var wideLayout: some View {
         HStack(spacing: 0) {
-            sidebar.frame(width: 205)
+            sidebar.frame(width: 210)
             Divider()
             if model.phase == .unlocked {
                 if model.section == .settings {
-                    SettingsView(model: model)
+                    SettingsView(model: model, applicationSuggestions: applicationSuggestions)
                 } else {
                     itemList.frame(width: 320)
                     Divider()
@@ -52,33 +54,45 @@ struct LibraryView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("CopySaver", systemImage: "clipboard")
-                .font(.system(size: 17, weight: .semibold)).padding(.bottom, 26).padding(.horizontal, 12)
+        VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
+                Label("CopySaver", systemImage: "clipboard").font(.system(size: 17, weight: .semibold))
+                Text("Clipboard & snippets").font(.system(size: 11)).foregroundStyle(.secondary)
+            }.padding(.horizontal, 12).padding(.bottom, 24)
             ForEach([LibrarySection.history, .snippets, .pinned]) { section in
                 Button {
                     model.navigate(to: section)
                 } label: {
-                    Label(section.rawValue, systemImage: section.symbol)
-                        .font(.system(size: 14)).frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12).padding(.vertical, 11)
-                        .background(model.section == section ? Color.accentColor.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 7))
-                }.buttonStyle(.plain)
-                    .accessibilityAddTraits(model.section == section ? .isSelected : [])
+                    SidebarRowLabel(title: section.rawValue, symbol: section.symbol)
+                }.buttonStyle(SidebarButtonStyle(selected: model.phase == .unlocked && model.section == section))
+                    .disabled(model.phase != .unlocked)
+                    .accessibilityAddTraits(model.phase == .unlocked && model.section == section ? .isSelected : [])
             }
             Spacer()
-            Divider().padding(.bottom, 10)
-            Label(model.captureStatus, systemImage: model.isPreview ? "eye" : "lock.shield")
-                .font(.system(size: 12)).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.bottom, 8)
+            Divider().padding(.bottom, 12)
+            HStack {
+                CaptureStatusView(model: model)
+                Spacer(minLength: 4)
+                if !model.isPreview, model.phase == .unlocked, model.settings?.captureEnabled == true {
+                    Button { model.toggleCapturePause() } label: {
+                        Image(systemName: model.settings?.manuallyPaused == true ? "play.fill" : "pause.fill")
+                    }.buttonStyle(.borderless).controlSize(.small).disabled(model.isBusy)
+                        .help(model.settings?.manuallyPaused == true ? "Resume capture" : "Pause capture")
+                        .accessibilityLabel(model.settings?.manuallyPaused == true ? "Resume capture" : "Pause capture")
+                }
+            }.padding(.horizontal, 12).padding(.bottom, 12)
             Button { model.onOpenFocus?() } label: {
-                Label("Focus mode", systemImage: "rectangle.center.inset.filled").frame(maxWidth: .infinity, alignment: .leading)
-            }.buttonStyle(.plain).padding(12)
-            Button { model.section = .settings } label: {
-                Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
-            }.buttonStyle(.plain).padding(12).disabled(model.phase != .unlocked)
+                SidebarRowLabel(title: "Focus mode", symbol: "magnifyingglass", shortcut: model.shortcutDescription)
+            }.buttonStyle(SidebarButtonStyle()).help("Open Focus mode: \(model.shortcutDescription)")
+            Button { model.navigate(to: .settings) } label: {
+                SidebarRowLabel(title: "Settings", symbol: "gearshape")
+            }.buttonStyle(SidebarButtonStyle(selected: model.phase == .unlocked && model.section == .settings)).disabled(model.phase != .unlocked)
+                .accessibilityAddTraits(model.phase == .unlocked && model.section == .settings ? .isSelected : [])
             Button { model.lock() } label: {
-                Label(model.lockActionTitle, systemImage: "lock").frame(maxWidth: .infinity, alignment: .leading)
-            }.buttonStyle(.plain).padding(12).disabled(model.phase != .unlocked)
+                SidebarRowLabel(title: model.lockActionTitle, symbol: model.lockActionSymbol)
+            }.buttonStyle(SidebarButtonStyle()).disabled(model.phase != .unlocked)
+            Text("Encrypted on this Mac").font(.system(size: 10)).foregroundStyle(.tertiary)
+                .padding(.horizontal, 12).padding(.top, 9)
         }
         .padding(.horizontal, 12).padding(.top, 54).padding(.bottom, 16)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -131,7 +145,7 @@ struct LibraryView: View {
                     Text(record.isSensitive ? "SENSITIVE SNIPPET" : "PLAIN TEXT")
                         .font(.system(size: 11, weight: .medium)).tracking(1).foregroundStyle(.secondary)
                     Spacer()
-                    if record.isSensitive { Image(systemName: "lock").foregroundStyle(.secondary).accessibilityLabel("Sensitive snippet") }
+                    if record.isSensitive { Image(systemName: model.requiresSensitiveAuthentication ? "lock" : "eye.slash").foregroundStyle(.secondary).accessibilityLabel("Sensitive snippet") }
                 }.padding(.top, 58).padding(.bottom, 28)
                 if case .snippet = record.payload { Text(verbatim: record.displayTitle).font(.title2.weight(.semibold)).padding(.bottom, 20) }
                 HStack {
@@ -148,9 +162,11 @@ struct LibraryView: View {
                             Text(verbatim: model.detailText(for: record)).font(.system(size: 14, design: .monospaced))
                                 .accessibilityLabel(model.revealedID == record.id ? record.content : "Sensitive content, concealed")
                             if model.revealedID == record.id {
-                                Button("Hide content") { model.concealSensitiveContent() }
+                                Button("Hide text") { model.concealSensitiveContent() }
                             } else {
-                                Button("Reveal for 30 seconds") { model.revealSelection() }.disabled(model.isPreview || model.isBusy)
+                                Button("Show text") { model.revealSelection() }.disabled(model.isPreview || model.isBusy)
+                                Text("Hidden again after 30 seconds or when you leave the app.")
+                                    .font(.system(size: 11)).foregroundStyle(.secondary)
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -236,7 +252,7 @@ struct RecordRow: View {
                         }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                if record.isSensitive { Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(.secondary) }
+                if record.isSensitive { Image(systemName: "eye.slash").font(.system(size: 10)).foregroundStyle(.secondary).accessibilityLabel("Preview hidden") }
             }.padding(.horizontal, 12).padding(.vertical, 15).frame(maxWidth: .infinity)
                 .background(selected ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7))
                 .contentShape(Rectangle())
@@ -276,10 +292,10 @@ struct VaultGateView: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: model.phase == .needsSetup ? "checkmark.shield" : "lock").font(.system(size: 34)).foregroundStyle(.secondary)
-            Text(model.phase == .needsSetup ? "A private home for your text" : model.phase == .failed ? "Vault unavailable" : model.automaticallyOpensVault ? (model.isBusy ? "Opening your library" : "Capture is stopped") : "Your vault is locked")
+            Image(systemName: model.automaticallyOpensVault ? "eye.slash" : model.phase == .needsSetup ? "checkmark.shield" : "lock").font(.system(size: 34)).foregroundStyle(.secondary)
+            Text(gateTitle)
                 .font(.system(size: 21, weight: .semibold))
-            Text(model.phase == .needsSetup ? "History and named snippets, stored locally with a key protected by macOS Keychain." : model.phase == .failed ? "Correct the problem below, then retry." : model.automaticallyOpensVault ? "Open your encrypted library to continue. macOS may ask for Keychain access after an app update." : "Unlock with Touch ID or your Mac’s login password.")
+            Text(gateSubtitle)
                 .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 340)
             if model.phase == .needsSetup {
                 Text("The key stays on this Mac. Losing it can make your saved data unrecoverable. Portable backup is not available yet.")
@@ -300,19 +316,37 @@ struct VaultGateView: View {
             } else if model.phase == .needsSetup {
                 Button("Create encrypted vault") { model.createVault() }.buttonStyle(.borderedProminent).controlSize(.large)
             } else if model.phase == .locked {
-                Button(model.automaticallyOpensVault ? "Open library" : "Unlock vault") { model.unlock() }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
+                Button(model.automaticallyOpensVault ? (model.errorMessage == nil ? "Open library" : "Try again") : "Unlock vault") { model.unlock() }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
             } else {
                 Button("Retry") { model.start() }.buttonStyle(.bordered)
             }
             FeedbackView(model: model)
             if !model.isPreview && !model.isBusy && model.phase == .locked {
-                Button("Reset vault…", role: .destructive) { confirmReset = true }.font(.caption)
+                Button(model.automaticallyOpensVault ? "Reset library…" : "Reset vault…", role: .destructive) { confirmReset = true }.font(.caption)
             }
         }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
-        .confirmationDialog("Permanently delete this vault and its key?", isPresented: $confirmReset, titleVisibility: .visible) {
+        .confirmationDialog(model.automaticallyOpensVault ? "Permanently reset your library?" : "Permanently delete this vault and its key?", isPresented: $confirmReset, titleVisibility: .visible) {
             Button("Delete history, snippets, and key", role: .destructive) { model.resetVault() }
             Button("Cancel", role: .cancel) {}
-        } message: { Text("All saved text will be lost. There is no recovery or portable backup. Authentication is required when the key is available; a missing key still allows this explicitly confirmed reset.") }
+        } message: { Text(model.automaticallyOpensVault ? "All history and snippets will be permanently removed. There is no recovery or portable backup." : "All saved text will be lost. There is no recovery or portable backup. Authentication is required when the key is available; a missing key still allows this explicitly confirmed reset.") }
+    }
+
+    private var gateTitle: String {
+        if model.automaticallyOpensVault {
+            if model.isBusy || model.phase == .loading { return "Opening your library" }
+            if model.phase == .locking { return "Hiding your library" }
+            return model.errorMessage == nil ? "Library hidden" : "Library unavailable"
+        }
+        return model.phase == .needsSetup ? "A private home for your text" : model.phase == .failed ? "Vault unavailable" : "Your vault is locked"
+    }
+
+    private var gateSubtitle: String {
+        if model.automaticallyOpensVault {
+            if model.isBusy || model.phase == .loading { return "Preparing your saved text…" }
+            if model.phase == .locking { return "Pausing capture and clearing previews…" }
+            return model.errorMessage == nil ? "Your history and snippets are hidden. Open the library to continue." : "Saved files have been preserved. Address the error below, then try again."
+        }
+        return model.phase == .needsSetup ? "History and named snippets, stored locally with a key protected by macOS Keychain." : model.phase == .failed ? "Correct the problem below, then retry." : "Unlock with Touch ID or your Mac’s login password."
     }
 }
 
@@ -333,9 +367,9 @@ private struct SnippetEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(model.editingSnippet == nil ? "New snippet" : "Edit snippet").font(.title2.weight(.semibold)).padding(.top, 54)
-            if model.draftNeedsAuthentication {
-                Text("Private draft concealed").foregroundStyle(.secondary)
-                Button("Authenticate to continue editing") { model.resumeSensitiveDraft() }.disabled(model.isBusy)
+            if model.draftIsConcealed {
+                Text("Draft hidden").foregroundStyle(.secondary)
+                Button(model.requiresSensitiveAuthentication ? "Authenticate to continue editing" : "Continue editing") { model.resumeSensitiveDraft() }.disabled(model.isBusy)
                 Button("Discard draft", role: .destructive) { model.discardDraft() }.disabled(model.isBusy)
                 FeedbackView(model: model)
                 Spacer()
@@ -345,7 +379,11 @@ private struct SnippetEditorView: View {
             Text("Text").font(.system(size: 13, weight: .medium))
             VaultTextEditor(text: $model.draftBody) { text, completion in model.copyDraftText(text, onSuccess: completion) }.disabled(model.isBusy)
                 .accessibilityLabel("Snippet text").border(Color(nsColor: .separatorColor), width: 1)
-            Toggle("Sensitive: authenticate before reveal or copy", isOn: $model.draftSensitive).font(.system(size: 12))
+            Toggle(model.requiresSensitiveAuthentication ? "Sensitive: authenticate before reveal or copy" : "Hide text in previews", isOn: $model.draftSensitive).font(.system(size: 12))
+            if !model.requiresSensitiveAuthentication {
+                Text("Hidden text stays out of body search. Sensitive copies are marked private and CopySaver attempts to clear them after 30 seconds.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             FeedbackView(model: model)
             HStack {
                 Button("Cancel") { model.discardDraft() }.disabled(model.isBusy)

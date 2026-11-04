@@ -12,7 +12,7 @@ People working across macOS apps throughout the day who need to recover recently
 
 ## Product Purpose
 
-Make local text retrieval quick and understandable while encrypting stored content. No account, server, telemetry, or network dependency. Community builds automatically open their login-Keychain-backed vault and capture new copies after OS approval. Pause/Disable choices persist; sleep purges state and wake resumes. Hide and pause is explicit presentation privacy, while Sensitive snippet actions retain fresh system authentication. Earlier protected builds remain separate. Windows is a later effort.
+Make local text retrieval quick and understandable while encrypting stored content. No account, server, telemetry, or network dependency. Community builds automatically open their login-Keychain-backed vault and capture new copies after OS approval. Pause/Disable choices persist; sleep purges state and wake resumes. Sensitive conceals previews and search results without requiring authentication inside an open community library. Earlier protected builds remain separate. Windows is a later effort.
 
 ## Brand Personality
 
@@ -28,7 +28,7 @@ Decorative dashboards, card grids, neon accents, ornamental glass, oversized hea
 - Keep behavior honest: Locked, Paused, permission errors, and developer previews are explicit.
 - Make native controls familiar and preserve keyboard/VoiceOver use.
 - Preserve the selected full-window and Focus-panel structures.
-- Keep content local and sensitive bodies concealed until an explicit authenticated action.
+- Keep content local and sensitive bodies concealed until an explicit reveal or edit. Community builds trust the logged-in user; the protected profile retains authentication.
 
 ## Accessibility & Inclusion
 

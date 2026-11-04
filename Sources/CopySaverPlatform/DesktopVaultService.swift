@@ -127,6 +127,7 @@ public actor DesktopVaultService: DesktopVaultAccess {
 
     public func authenticateSensitiveAccess() async throws {
         guard let vault, access != nil else { throw VaultError.locked }
+        guard keys.protection == .userPresence else { try Task.checkCancellation(); return }
         let request = generation
         try await keys.authenticateSensitiveAccess(for: vault.vaultID)
         guard generation == request else { throw VaultError.staleSession }

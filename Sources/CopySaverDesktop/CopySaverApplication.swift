@@ -51,7 +51,7 @@ public enum CopySaverApplication {
         if preview {
             clipboard = nil
             monitor = nil
-            model = DesktopModel(service: nil, clipboard: nil, preview: true)
+            model = DesktopModel(service: nil, clipboard: nil, preview: true, automaticallyOpensVault: automatic)
         } else if let identifier,
                   let keys = try? KeychainVaultKeyProvider(bundleIdentifier: identifier, protection: automatic ? .automatic : .userPresence),
                   let support = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
@@ -63,7 +63,7 @@ public enum CopySaverApplication {
         } else {
             clipboard = nil
             monitor = nil
-            model = DesktopModel(service: nil, clipboard: nil)
+            model = DesktopModel(service: nil, clipboard: nil, automaticallyOpensVault: automatic)
         }
         super.init()
     }

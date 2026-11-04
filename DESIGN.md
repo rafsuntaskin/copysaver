@@ -27,7 +27,8 @@ A compact floating panel with search first, History/Snippets switch, optional pi
 - Locked surfaces show no item names, counts, content, or previous queries.
 - Empty states offer a useful action and do not seed a real vault with examples.
 - A deliberate developer UI-preview mode may show synthetic records, with an unmistakable sample-data label and no clipboard/Keychain/vault access. It must never unlock a real vault or be a fallback for failed authentication.
-- Sensitive bodies remain masked, including accessibility output; fresh authentication is required for reveal/edit/copy. Core storage tests do not establish this UI behavior.
+- Sensitive bodies remain masked in previews and accessibility output. Community reveal/edit/copy requires no additional authentication; the protected profile retains its original authentication. Explicit reveal expires on deactivation or after 30 seconds.
+- Sidebar rows own their entire hit area. Only the active destination uses an accent selection fill; hover and press use quiet neutral fills. Keep text/icon positions stable, use a distinct keyboard focus outline, and fade state changes without scaling or sliding. Respect Reduce Motion and increased contrast.
 - Show copy/save success only after the real operation succeeds. Controls for unavailable functionality must not pretend to work.
 - Preserve dirty-draft warnings for normal navigation; lock clears drafts without waiting for confirmation.
 
