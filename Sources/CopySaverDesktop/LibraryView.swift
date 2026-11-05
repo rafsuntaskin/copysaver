@@ -1,3 +1,4 @@
+import AppKit
 import CopySaverDomain
 import SwiftUI
 
@@ -16,7 +17,7 @@ struct LibraryView: View {
                             ForEach(LibrarySection.allCases) { Text($0.rawValue).tag($0) }
                         }.labelsHidden().accessibilityLabel("Library section")
                         Button { model.onOpenFocus?() } label: { Image(systemName: "magnifyingglass") }.help("Open Focus mode")
-                        Button { model.lock() } label: { Image(systemName: "lock") }.help("Lock vault")
+                        Button { model.lock() } label: { Image(systemName: "lock") }.help(model.lockActionTitle)
                     }.padding(.horizontal, 18).padding(.top, 40).padding(.bottom, 12)
                     Divider()
                     if model.phase != .unlocked { VaultGateView(model: model) }
@@ -76,7 +77,7 @@ struct LibraryView: View {
                 Label("Settings", systemImage: "gearshape").frame(maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(.plain).padding(12).disabled(model.phase != .unlocked)
             Button { model.lock() } label: {
-                Label("Lock vault", systemImage: "lock").frame(maxWidth: .infinity, alignment: .leading)
+                Label(model.lockActionTitle, systemImage: "lock").frame(maxWidth: .infinity, alignment: .leading)
             }.buttonStyle(.plain).padding(12).disabled(model.phase != .unlocked)
         }
         .padding(.horizontal, 12).padding(.top, 54).padding(.bottom, 16)
@@ -180,13 +181,38 @@ struct LibraryView: View {
                 Image(systemName: model.section == .snippets ? "doc.text" : "clipboard").font(.system(size: 30)).foregroundStyle(.secondary)
                 Text(model.libraryQuery.isEmpty ? (model.section == .snippets ? "Save something you use often" : "Your clipboard history starts here") : "No matches")
                     .font(.system(size: 19, weight: .semibold))
-                Text(model.libraryQuery.isEmpty ? (model.section == .snippets ? "Give reusable text a name so it’s easy to find." : "Enable clipboard history in Settings to keep future copies, or create a named snippet.") : "Try a different word or clear your search.")
+                Text(model.libraryQuery.isEmpty ? (model.section == .snippets ? "Give reusable text a name so it’s easy to find." : historyEmptyDescription) : "Try a different word or clear your search.")
                     .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
+                if !model.isPreview, model.libraryQuery.isEmpty, model.section == .history || model.section == .pinned {
+                    if model.settings?.captureEnabled != true {
+                        Button("Enable history") { model.setCaptureEnabled(true) }.disabled(model.isBusy)
+                    } else if model.settings?.manuallyPaused == true {
+                        Button("Resume capture") { model.toggleCapturePause() }.disabled(model.isBusy)
+                    } else if model.clipboardPermission != .allowed {
+                        if model.clipboardPermission != .denied {
+                            Button("Request clipboard access") { model.onRequestClipboardAccess?() }.disabled(model.isBusy)
+                        }
+                        Button("Open System Settings") { NSWorkspace.shared.open(URL(filePath: "/System/Applications/System Settings.app")) }
+                        Text("Choose Always Allow for CopySaver in Privacy & Security → Paste from Other Apps. The access request discards the current clipboard value.")
+                            .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 340)
+                    }
+                }
                 if !model.isPreview {
                     Button("New snippet") { model.beginSnippet() }.buttonStyle(.borderedProminent).disabled(model.isBusy)
                 }
                 FeedbackView(model: model)
             }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var historyEmptyDescription: String {
+        switch model.captureConditions.availability {
+        case .ready: "Copy text in another app to add it here. Earlier clipboard contents are skipped."
+        case .permissionNeeded: "Allow clipboard access to keep new copies automatically."
+        case .paused: "Capture is paused. Resume when you want to keep new copies."
+        case .disabled: "Enable clipboard history to keep future copies, or create a named snippet."
+        case .storageUnavailable: "Resolve the storage error before capturing more copies."
+        case .locked: "Open your library to continue."
         }
     }
 }
@@ -251,9 +277,9 @@ struct VaultGateView: View {
     var body: some View {
         VStack(spacing: 18) {
             Image(systemName: model.phase == .needsSetup ? "checkmark.shield" : "lock").font(.system(size: 34)).foregroundStyle(.secondary)
-            Text(model.phase == .needsSetup ? "A private home for your text" : model.phase == .failed ? "Vault unavailable" : "Your vault is locked")
+            Text(model.phase == .needsSetup ? "A private home for your text" : model.phase == .failed ? "Vault unavailable" : model.automaticallyOpensVault ? (model.isBusy ? "Opening your library" : "Capture is stopped") : "Your vault is locked")
                 .font(.system(size: 21, weight: .semibold))
-            Text(model.phase == .needsSetup ? "History and named snippets, stored locally with a key protected by macOS Keychain." : model.phase == .failed ? "Correct the problem below, then retry." : "Unlock with Touch ID or your Mac’s login password.")
+            Text(model.phase == .needsSetup ? "History and named snippets, stored locally with a key protected by macOS Keychain." : model.phase == .failed ? "Correct the problem below, then retry." : model.automaticallyOpensVault ? "Open your encrypted library to continue. macOS may ask for Keychain access after an app update." : "Unlock with Touch ID or your Mac’s login password.")
                 .font(.system(size: 13)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 340)
             if model.phase == .needsSetup {
                 Text("The key stays on this Mac. Losing it can make your saved data unrecoverable. Portable backup is not available yet.")
@@ -274,7 +300,7 @@ struct VaultGateView: View {
             } else if model.phase == .needsSetup {
                 Button("Create encrypted vault") { model.createVault() }.buttonStyle(.borderedProminent).controlSize(.large)
             } else if model.phase == .locked {
-                Button("Unlock vault") { model.unlock() }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
+                Button(model.automaticallyOpensVault ? "Open library" : "Unlock vault") { model.unlock() }.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
             } else {
                 Button("Retry") { model.start() }.buttonStyle(.bordered)
             }

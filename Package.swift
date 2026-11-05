@@ -14,9 +14,11 @@ let package = Package(
         .executable(name: "CopySaverWidgetCheck", targets: ["CopySaverWidgetCheck"]),
         .executable(name: "CopySaverCrashProbe", targets: ["CopySaverCrashProbe"]),
         .executable(name: "CopySaverKeychainProbe", targets: ["CopySaverKeychainProbe"]),
+        .executable(name: "CopySaverAutomaticVaultProbe", targets: ["CopySaverAutomaticVaultProbe"]),
     ],
     targets: [
         .target(name: "CopySaverDomain"),
+        .executableTarget(name: "CopySaverAutomaticVaultProbe", dependencies: ["CopySaverPlatform", "CopySaverDomain", "CopySaverVault"], path: "TestsSupport/AutomaticVaultProbe"),
         .executableTarget(name: "CopySaverCrashProbe", dependencies: ["CopySaverDomain", "CopySaverVault"], path: "TestsSupport/CrashProbe"),
         .executableTarget(name: "CopySaverKeychainProbe", dependencies: ["CopySaverPlatform", "CopySaverDomain", "CopySaverVault"], path: "TestsSupport/KeychainProbe", exclude: ["Info.plist", "CopySaverKeychainProbe.entitlements"]),
         .target(name: "CopySaverWidgets"),
@@ -30,7 +32,7 @@ let package = Package(
         .testTarget(name: "CopySaverDomainTests", dependencies: ["CopySaverDomain"]),
         .target(name: "CopySaverPlatform", dependencies: ["CopySaverDomain", "CopySaverVault"]),
         .target(name: "CopySaverDesktop", dependencies: ["CopySaverDomain", "CopySaverVault", "CopySaverPlatform"]),
-        .executableTarget(name: "CopySaverDev", dependencies: ["CopySaverDesktop"], path: "App", exclude: ["Info.plist", "CopySaver.entitlements"]),
+        .executableTarget(name: "CopySaverDev", dependencies: ["CopySaverDesktop"], path: "App", exclude: ["Info.plist", "CopySaver.entitlements", "CopySaverPreview.entitlements"]),
         .testTarget(name: "CopySaverPlatformTests", dependencies: ["CopySaverPlatform", "CopySaverDomain", "CopySaverVault"]),
         .testTarget(name: "CopySaverDesktopTests", dependencies: ["CopySaverDesktop", "CopySaverDomain", "CopySaverPlatform", "CopySaverVault"]),
         .testTarget(

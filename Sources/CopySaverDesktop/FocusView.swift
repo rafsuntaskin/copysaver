@@ -54,7 +54,7 @@ struct FocusView: View {
                         model.libraryQuery = model.focusQuery
                         model.onOpenLibrary?()
                     }.buttonStyle(.plain)
-                    Button { model.lock() } label: { Image(systemName: "lock") }.buttonStyle(.plain).help("Lock vault")
+                    Button { model.lock() } label: { Image(systemName: "lock") }.buttonStyle(.plain).help(model.lockActionTitle)
                 }.font(.system(size: 11)).foregroundStyle(.secondary).padding(17)
             } else {
                 VaultGateView(model: model)
@@ -114,7 +114,11 @@ struct SettingsView: View {
                 Divider()
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Privacy & Security").font(.headline)
-                    Text("Stored content is encrypted locally. Locking pauses capture and clears decrypted content from the interface.")
+                    Text(model.automaticallyOpensVault ? "Your library opens automatically. Saved text is encrypted, with its key kept separately in your macOS login Keychain. Hide and pause clears the interface and stops capture until you reopen it." : "Stored content is encrypted locally. Locking pauses capture and clears decrypted content from the interface.")
+                    if model.automaticallyOpensVault {
+                        Text("A copied database cannot be read without its key. This does not protect against someone controlling your unlocked account or able to unlock your Keychain. Sensitive snippet actions still ask for authentication.").foregroundStyle(.secondary)
+                        Text("This library is separate from earlier protected builds. Those saved items remain in the earlier app; they are not automatically imported.").foregroundStyle(.secondary)
+                    }
                     Text("Portable encrypted backup is not available yet. Keep another copy of important information.").foregroundStyle(.secondary)
                 }
                 Divider()
@@ -153,7 +157,7 @@ private struct HistorySettingsView: View {
             if let settings = model.settings {
                 Toggle("Keep clipboard history", isOn: Binding(get: { settings.captureEnabled }, set: { model.setCaptureEnabled($0) }))
                     .disabled(model.isPreview || model.isBusy)
-                Text("Capture pauses while locked. Copies made before enabling or resuming are skipped.").foregroundStyle(.secondary)
+                Text(model.automaticallyOpensVault ? "Capture starts when the app opens and resumes after sleep. Pause and History off are remembered. Copies made before starting or resuming are skipped." : "Capture pauses while locked. Copies made before enabling or resuming are skipped.").foregroundStyle(.secondary)
                 HStack {
                     Label(model.captureStatus, systemImage: model.captureConditions.canCapture ? "record.circle" : "pause.circle")
                     if settings.captureEnabled {
@@ -173,12 +177,14 @@ private struct HistorySettingsView: View {
                 Picker("Expire unpinned history", selection: $days) {
                     ForEach([1, 7, 30, 90], id: \.self) { Text("\($0) days").tag($0) }
                 }.frame(maxWidth: 320)
-                Picker("Lock after inactivity", selection: $timeout) {
-                    Text("5 minutes").tag(IdleLockTimeout.fiveMinutes)
-                    Text("15 minutes").tag(IdleLockTimeout.fifteenMinutes)
-                    Text("30 minutes").tag(IdleLockTimeout.thirtyMinutes)
-                    Text("System lock only").tag(IdleLockTimeout.systemLockOnly)
-                }.frame(maxWidth: 320)
+                if !model.automaticallyOpensVault {
+                    Picker("Lock after inactivity", selection: $timeout) {
+                        Text("5 minutes").tag(IdleLockTimeout.fiveMinutes)
+                        Text("15 minutes").tag(IdleLockTimeout.fifteenMinutes)
+                        Text("30 minutes").tag(IdleLockTimeout.thirtyMinutes)
+                        Text("System lock only").tag(IdleLockTimeout.systemLockOnly)
+                    }.frame(maxWidth: 320)
+                }
                 Text("Excluded applications").fontWeight(.medium)
                 Text("One bundle identifier per line. Browser exclusions cover every window, including private windows. Attribution and secret detection are best effort.").foregroundStyle(.secondary)
                 TextEditor(text: $excluded).font(.system(size: 12, design: .monospaced)).frame(height: 70)

@@ -4,9 +4,10 @@ import WidgetKit
 
 public enum LauncherDestination: String, CaseIterable, Sendable {
     case focus, history, snippets
-    public func url(development: Bool) -> URL {
+    public func url(development: Bool, community: Bool = false) -> URL {
         // Both components are compile-time allowlists; no user data enters a URL.
-        URL(string: "\(development ? "copysaver-dev" : "copysaver")://\(rawValue)")!
+        let scheme = community ? (development ? "copysaver-community-dev" : "copysaver-community") : (development ? "copysaver-dev" : "copysaver")
+        return URL(string: "\(scheme)://\(rawValue)")!
     }
 }
 
@@ -38,6 +39,9 @@ private struct LauncherView: View {
         false
         #endif
     }
+    private func url(_ destination: LauncherDestination) -> URL {
+        destination.url(development: development, community: Bundle.main.object(forInfoDictionaryKey: "CopySaverCommunityBuild") as? Bool == true)
+    }
     var body: some View {
         HStack(spacing: 22) {
             VStack(alignment: .leading, spacing: 10) {
@@ -45,19 +49,19 @@ private struct LauncherView: View {
                 Text("Clipboard & snippets").font(.caption).foregroundStyle(.secondary)
                 Spacer(minLength: 4)
                 if family == .systemMedium {
-                    Link(destination: LauncherDestination.focus.url(development: development)) { focusLabel }
+                    Link(destination: url(.focus)) { focusLabel }
                 } else { focusLabel }
             }.frame(maxWidth: .infinity, alignment: .leading)
             if family == .systemMedium {
                 Divider()
                 VStack(alignment: .leading, spacing: 20) {
-                    Link(destination: LauncherDestination.history.url(development: development)) { Label("History", systemImage: "clock") }
-                    Link(destination: LauncherDestination.snippets.url(development: development)) { Label("Snippets", systemImage: "doc.text") }
+                    Link(destination: url(.history)) { Label("History", systemImage: "clock") }
+                    Link(destination: url(.snippets)) { Label("Snippets", systemImage: "doc.text") }
                 }.font(.system(size: 13)).frame(width: 100, alignment: .leading)
             }
         }
         .containerBackground(.fill.tertiary, for: .widget)
-        .widgetURL(LauncherDestination.focus.url(development: development))
+        .widgetURL(url(.focus))
     }
     private var focusLabel: some View {
         Label("Open Focus Mode", systemImage: "magnifyingglass")

@@ -9,18 +9,22 @@ public enum KeychainFailure: Error, Equatable, Sendable {
     case missingEntitlement, unavailable, invalidKeyData, protectionUnavailable, invalidIdentity
 }
 
+public enum KeychainProtection: Sendable {
+    case userPresence, automatic
+}
+
 public struct KeychainIdentity: Equatable, Sendable {
     public let service: String
     public let vaultID: UUID
     public var account: String { vaultID.uuidString.lowercased() }
 
-    public init(bundleIdentifier: String, vaultID: UUID) throws {
+    public init(bundleIdentifier: String, vaultID: UUID, protection: KeychainProtection = .userPresence) throws {
         let components = bundleIdentifier.split(separator: ".", omittingEmptySubsequences: false)
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-")
         guard components.count > 1, bundleIdentifier.utf8.count <= 255,
               components.allSatisfy({ !$0.isEmpty && $0.unicodeScalars.allSatisfy(allowed.contains) })
         else { throw KeychainFailure.invalidIdentity }
-        self.service = bundleIdentifier + ".vault-key"
+        self.service = bundleIdentifier + (protection == .automatic ? ".automatic-vault-key" : ".vault-key")
         self.vaultID = vaultID
     }
 }
@@ -29,16 +33,31 @@ public protocol KeychainTransport: Sendable {
     func add(_ key: Data, identity: KeychainIdentity) async throws
     func read(identity: KeychainIdentity, reason: String) async throws -> Data
     func delete(identity: KeychainIdentity) async throws
+    func requestAccess(identity: KeychainIdentity) async throws
+}
+
+public extension KeychainTransport {
+    func requestAccess(identity: KeychainIdentity) async throws {
+        _ = try await read(identity: identity, reason: "Open your CopySaver vault")
+    }
 }
 
 public struct KeychainVaultKeyProvider: VaultKeyProvider, Sendable {
     public let bundleIdentifier: String
+    public let protection: KeychainProtection
     private let transport: any KeychainTransport
+    private let authentication: any SensitiveAuthenticator
 
-    public init(bundleIdentifier: String, transport: any KeychainTransport = SystemKeychainTransport()) throws {
+    public init(
+        bundleIdentifier: String, protection: KeychainProtection = .userPresence,
+        transport: (any KeychainTransport)? = nil,
+        authentication: any SensitiveAuthenticator = SystemSensitiveAuthenticator()
+    ) throws {
         _ = try KeychainIdentity(bundleIdentifier: bundleIdentifier, vaultID: UUID())
         self.bundleIdentifier = bundleIdentifier
-        self.transport = transport
+        self.protection = protection
+        self.transport = transport ?? (protection == .automatic ? SystemLoginKeychainTransport() : SystemKeychainTransport())
+        self.authentication = authentication
     }
 
     public func createKey(for vaultID: UUID) async throws -> SymmetricKey {
@@ -54,15 +73,27 @@ public struct KeychainVaultKeyProvider: VaultKeyProvider, Sendable {
     }
 
     public func authenticateSensitiveAccess(for vaultID: UUID) async throws {
-        _ = try await loadKey(for: vaultID, reason: "Access a sensitive CopySaver snippet")
+        if protection == .automatic {
+            // A UI safeguard, not a cryptographic user-presence boundary for this profile.
+            _ = try await loadKey(for: vaultID, reason: "Access a sensitive CopySaver snippet")
+            try await authentication.authenticate()
+        } else {
+            _ = try await loadKey(for: vaultID, reason: "Access a sensitive CopySaver snippet")
+        }
     }
 
     public func deleteKey(for vaultID: UUID) async throws {
         try await transport.delete(identity: identity(for: vaultID))
     }
 
+    public func requestAutomaticAccess(for vaultID: UUID) async throws {
+        guard protection == .automatic else { return }
+        try await transport.requestAccess(identity: identity(for: vaultID))
+        try Task.checkCancellation()
+    }
+
     private func identity(for vaultID: UUID) throws -> KeychainIdentity {
-        try KeychainIdentity(bundleIdentifier: bundleIdentifier, vaultID: vaultID)
+        try KeychainIdentity(bundleIdentifier: bundleIdentifier, vaultID: vaultID, protection: protection)
     }
 
     private func loadKey(for vaultID: UUID, reason: String) async throws -> SymmetricKey {
@@ -119,7 +150,7 @@ enum KeychainQueries {
 
 /// The context is configured before dispatch. Only invalidation crosses threads,
 /// which LocalAuthentication provides to interrupt a pending evaluation.
-private final class AuthenticationAttempt: @unchecked Sendable {
+final class AuthenticationAttempt: @unchecked Sendable {
     let context = LAContext()
     private let lock = NSLock()
     private var cancelled = false

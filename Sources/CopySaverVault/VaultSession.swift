@@ -2,7 +2,7 @@ import CopySaverDomain
 import CryptoKit
 import Foundation
 
-/// The native adapter must enforce authenticated, app-scoped Keychain access.
+/// The native adapter enforces the selected Keychain protection profile.
 /// Test providers use ephemeral keys; this package has no file-key fallback.
 public protocol VaultKeyProvider: Sendable {
     func loadKey(for vaultID: UUID) async throws -> SymmetricKey

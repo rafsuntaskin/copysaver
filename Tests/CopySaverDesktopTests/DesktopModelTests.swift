@@ -10,6 +10,9 @@ private actor TestVault: DesktopVaultAccess {
     var prepareCalls = 0
     var records: [VaultRecord] = []
     var authenticationCalls = 0
+    var unlockCalls = 0
+    var createCalls = 0
+    var unlockFailure: KeychainFailure?
     let exists: Bool
     var authenticationFailure: KeychainFailure?
     let authenticationGate: TestGate?
@@ -23,8 +26,14 @@ private actor TestVault: DesktopVaultAccess {
     }
     func failAuthentication(_ failure: KeychainFailure) { authenticationFailure = failure }
     func prepare() -> Bool { prepareCalls += 1; return exists }
-    func create() {}
-    func unlock() async -> [VaultRecord] { await unlockGate?.wait(); return records }
+    func create() { createCalls += 1 }
+    func failUnlock(_ failure: KeychainFailure) { unlockFailure = failure }
+    func unlock() async throws -> [VaultRecord] {
+        unlockCalls += 1
+        await unlockGate?.wait()
+        if let unlockFailure { throw unlockFailure }
+        return records
+    }
     func lock() {}
     func save(_ record: VaultRecord) -> [VaultRecord] { records.removeAll { $0.id == record.id }; records.append(record); return records }
     func markCopied(_ id: UUID, date: Date) throws -> [VaultRecord] { records = try records.map { $0.id == id ? try $0.markingCopied(at: date) : $0 }; return records }
@@ -34,6 +43,73 @@ private actor TestVault: DesktopVaultAccess {
         await authenticationGate?.wait()
         if let authenticationFailure { throw authenticationFailure }
     }
+}
+
+@MainActor @Test func automaticStartupCreatesAndOpensWithoutSensitiveAuthentication() async throws {
+    let settings = try VaultRecord(.settings(VaultSettings(captureEnabled: true)))
+    let vault = TestVault(records: [settings], exists: false)
+    let model = DesktopModel(service: vault, clipboard: TestClipboard(), automaticallyOpensVault: true)
+    model.clipboardPermission = .allowed
+    model.start()
+    await model.finishPendingOperations()
+    #expect(model.phase == .unlocked && model.captureConditions.canCapture)
+    #expect(await vault.createCalls == 1)
+    #expect(await vault.unlockCalls == 1)
+    #expect(await vault.authenticationCalls == 0)
+}
+
+@MainActor @Test func automaticResumeWaitsForAllReasonsAndRespectsExplicitHide() async throws {
+    let settings = try VaultRecord(.settings(VaultSettings(captureEnabled: true, manuallyPaused: true)))
+    let vault = TestVault(records: [settings])
+    let clipboard = TestClipboard()
+    let model = DesktopModel(service: vault, clipboard: clipboard, automaticallyOpensVault: true)
+    model.clipboardPermission = .allowed
+    model.start(); await model.finishPendingOperations()
+    model.libraryQuery = "Synthetic query"
+    model.suspend(for: .sleep)
+    model.suspend(for: .sessionInactive)
+    await model.finishPendingOperations()
+    #expect(model.phase == .locked && model.records.isEmpty && model.libraryQuery.isEmpty)
+    model.resume(from: .sleep); await model.finishPendingOperations()
+    #expect(model.phase == .locked && !model.captureConditions.canCapture)
+    #expect(await vault.unlockCalls == 1)
+    model.resume(from: .sessionInactive); await model.finishPendingOperations()
+    #expect(model.phase == .unlocked && model.captureStatus == "Paused")
+    #expect(await vault.unlockCalls == 2)
+    #expect(await vault.authenticationCalls == 0)
+    model.lock(); await model.finishPendingOperations()
+    model.suspend(for: .sleep); model.resume(from: .sleep)
+    await model.finishPendingOperations()
+    #expect(model.phase == .locked)
+    #expect(await vault.unlockCalls == 2)
+    await model.unlock()?.value
+    #expect(model.phase == .unlocked && model.settings?.manuallyPaused == true)
+}
+
+@MainActor @Test func automaticKeyFailureDoesNotRetryOnEveryWakeAndPreservesEmptyPresentation() async throws {
+    let vault = TestVault(records: [try sensitiveRecord()])
+    await vault.failUnlock(.interactionRequired)
+    let model = DesktopModel(service: vault, clipboard: TestClipboard(), automaticallyOpensVault: true)
+    model.start(); await model.finishPendingOperations()
+    #expect(model.phase == .locked && model.records.isEmpty && model.errorMessage != nil)
+    model.suspend(for: .sleep); model.resume(from: .sleep)
+    await model.finishPendingOperations()
+    #expect(await vault.unlockCalls == 1)
+    #expect(model.phase == .locked && model.records.isEmpty && model.errorMessage != nil)
+    await model.unlock()?.value
+    #expect(await vault.unlockCalls == 2)
+}
+
+@MainActor @Test func lateAutomaticOpenCannotCrossManualHide() async throws {
+    let gate = TestGate()
+    let vault = TestVault(records: [try sensitiveRecord()], unlockGate: gate)
+    let model = DesktopModel(service: vault, clipboard: TestClipboard(), automaticallyOpensVault: true)
+    model.start()
+    try await gate.waitUntilRequested()
+    model.lock()
+    await gate.release()
+    await model.finishPendingOperations()
+    #expect(model.phase == .locked && model.records.isEmpty)
 }
 
 private actor TestGate {

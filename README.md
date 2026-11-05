@@ -2,7 +2,7 @@
 
 A macOS-first, open source clipboard history and named-snippet utility designed to keep stored content encrypted locally.
 
-**Status: native development build with history, snippets, Focus mode, and generic launcher-widget source implemented. Signed macOS verification and notarized distribution remain unfinished; there is no release download yet.** Implementation progress and verification gates live in [spec.md](spec.md#0-delivery-checklist-and-progress).
+**Status: native development build with history, snippets, Focus mode, and generic launcher-widget source implemented. The community profile opens and captures automatically using login-Keychain storage, without an Apple-issued signing certificate. Full native/release verification is unfinished; no public release download is published.** Implementation progress and verification gates live in [spec.md](spec.md#0-delivery-checklist-and-progress).
 
 ## v0.1 scope
 
@@ -11,15 +11,15 @@ A macOS-first, open source clipboard history and named-snippet utility designed 
 - Masked sensitive snippets with system authentication before reveal or copy.
 - A full native library and a Spotlight-style Focus panel with a configurable global shortcut.
 - Small and medium macOS Notification Center/desktop launcher widgets.
-- An encrypted SQLite-backed vault with a device-bound Keychain key.
+- An encrypted SQLite-backed vault with a random key kept separately in macOS Keychain.
 
 The selected stack is Swift 6, SwiftUI, AppKit, CryptoKit, Security/LocalAuthentication, SQLite, and WidgetKit. macOS is the priority; Windows is a later, separately scoped client.
 
 ## Privacy design
 
-The MVP is designed to work without an account, server, telemetry, or network access. Locking the vault pauses clipboard capture. Copying an item deliberately puts plaintext on the system clipboard for the destination app to use.
+The MVP works without an account, server, telemetry, or app networking. New community libraries capture automatically after OS clipboard approval, reopen after sleep, and respect saved Pause/Disable choices. Hide and pause clears the interface and stops capture until explicit reopening; it is not an authentication lock. Sensitive snippet actions retain fresh system authentication. Copying deliberately puts plaintext on the system clipboard.
 
-The initial key is device-bound. Portable encrypted backup/recovery is not included in v0.1, so the planned app must not be treated as the only copy of important information. The threat model and limits are in [spec section 7](spec.md#7-security-model). These are design requirements, not claims of completed security validation.
+Community vault keys use the default login Keychain's calling-app ACL. Copied database files alone cannot reveal the contents; a compromised unlocked account or decryptable Keychain is outside this protection. No app-exclusivity or device-only guarantee is claimed for this profile. Portable backup/recovery is not included in v0.1, so keep another copy of important information. See [community installation/privacy notes](docs/COMMUNITY.txt) and [spec section 7](spec.md#7-security-model).
 
 ## Design
 
@@ -37,7 +37,7 @@ make preview
 
 The preview opens the approved three-column library with synthetic samples. Use the sidebar’s Focus mode action to inspect the compact panel. Preview mode never creates a vault, accesses Keychain, or copies to the system clipboard.
 
-The dependency-free Swift package includes record models, AES-GCM encrypted SQLite storage, a native Keychain adapter, and SwiftUI/AppKit views. Its 89 Swift Testing checks (including two opt-in benchmarks) use synthetic data and temporary storage; authentication and clipboard behavior use test doubles. `make app` builds an ad-hoc signed development bundle at `.build/CopySaverDev.app`; it does not establish protected Keychain access or release readiness. Use synthetic data until native security gates pass. See [native integration evidence](docs/native-integration.md), [performance measurements](docs/performance.md), and the [vault format](docs/vault-format.md). The Xcode target embeds the launcher widget; the standalone preview bundle does not install a widget. There is no signed/notarized release yet.
+The dependency-free Swift package includes AES-GCM encrypted SQLite storage, Keychain adapters, and SwiftUI/AppKit views. Automated tests use synthetic data and injected OS boundaries. `make app` builds an ad-hoc community development app at `.build/CopySaverDev.app`, with a separate identity/vault from the older protected Xcode build. `make preview` still uses fictional in-memory samples without capture or Keychain access. `make community-dmg` builds a universal app and embedded launcher widget from a reviewed clean checkout, with no Apple signing key or notarization. macOS may require first-run/update approval; actual widget discovery and clean-Mac release testing remain pending. See [development setup](docs/development.md), [community release validation](docs/release-checklist.md#community-dmg), [native evidence](docs/native-integration.md), and the [vault format](docs/vault-format.md).
 
 ## Contributing and security
 

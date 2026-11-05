@@ -16,9 +16,11 @@ public protocol DesktopVaultAccess: Sendable {
     func clearHistory() async throws -> [VaultRecord]
     func markCopied(_ id: UUID, date: Date) async throws -> [VaultRecord]
     func reset() async throws
+    func requestAutomaticAccess() async throws
 }
 
 public extension DesktopVaultAccess {
+    func requestAutomaticAccess() async throws {}
     func capture(_ sample: ClipboardSample) async throws -> [VaultRecord] { throw VaultError.storageFailure }
     func updateSettings(_ settings: VaultSettings, confirmed: Bool) async throws -> [VaultRecord] { throw VaultError.storageFailure }
     func cleanup(now: Date) async throws -> [VaultRecord] { throw VaultError.storageFailure }
@@ -76,14 +78,24 @@ public actor DesktopVaultService: DesktopVaultAccess {
         let granted = try await vault.unlock(using: keys)
         guard generation == request else { throw VaultError.staleSession }
         access = granted
-        let records = try await vault.update(access: granted) { records, budget in
-            let settings = try HistoryPolicy.settings(in: records)
-            var next = try HistoryPolicy.retain(records, settings: settings, now: Date())
-            if !next.contains(where: { if case .settings = $0.payload { return true }; return false }) { next.append(try VaultRecord(.settings(settings))) }
-            return try HistoryPolicy.fit(next, settings: settings, budget: budget)
+        let newVaultSettings = try VaultSettings(
+            captureEnabled: keys.protection == .automatic,
+            idleLockTimeout: keys.protection == .automatic ? .systemLockOnly : .fifteenMinutes
+        )
+        do {
+            let records = try await vault.update(access: granted) { records, budget in
+                let hasSettings = records.contains { if case .settings = $0.payload { true } else { false } }
+                let settings = hasSettings ? try HistoryPolicy.settings(in: records) : newVaultSettings
+                var next = try HistoryPolicy.retain(records, settings: settings, now: Date())
+                if !hasSettings { next.append(try VaultRecord(.settings(settings))) }
+                return try HistoryPolicy.fit(next, settings: settings, budget: budget)
+            }
+            guard generation == request else { throw VaultError.staleSession }
+            return records
+        } catch {
+            if generation == request { access = nil; await vault.lock() }
+            throw error
         }
-        guard generation == request else { throw VaultError.staleSession }
-        return records
     }
 
     public func lock() async {
@@ -117,6 +129,13 @@ public actor DesktopVaultService: DesktopVaultAccess {
         guard let vault, access != nil else { throw VaultError.locked }
         let request = generation
         try await keys.authenticateSensitiveAccess(for: vault.vaultID)
+        guard generation == request else { throw VaultError.staleSession }
+    }
+
+    public func requestAutomaticAccess() async throws {
+        guard let vault else { return }
+        let request = generation
+        try await keys.requestAutomaticAccess(for: vault.vaultID)
         guard generation == request else { throw VaultError.staleSession }
     }
 

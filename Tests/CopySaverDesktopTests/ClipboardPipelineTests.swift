@@ -65,16 +65,16 @@ private actor PipelineKeychain: KeychainTransport {
     let service: DesktopVaultService
     let model: DesktopModel
 
-    init() throws {
+    init(automatic: Bool = false) throws {
         url = FileManager.default.temporaryDirectory
             .appendingPathComponent("copysaver-pipeline-\(UUID())", isDirectory: true)
             .appendingPathComponent("vault.sqlite")
         let identifier = "org.example.CopySaver.pipeline.dev"
-        keys = try KeychainVaultKeyProvider(bundleIdentifier: identifier, transport: keychain)
+        keys = try KeychainVaultKeyProvider(bundleIdentifier: identifier, protection: automatic ? .automatic : .userPresence, transport: keychain)
         service = DesktopVaultService(url: url, keys: keys)
         output = SystemClipboardOutput(bundleIdentifier: identifier, pasteboard: board, now: { [clock] in clock.date }, schedulesTimer: false)
         monitor = ClipboardMonitor(input: board, ownIdentifier: identifier, now: { [clock] in clock.date })
-        model = DesktopModel(service: service, clipboard: output)
+        model = DesktopModel(service: service, clipboard: output, automaticallyOpensVault: automatic)
         connect(model)
     }
 
@@ -86,6 +86,7 @@ private actor PipelineKeychain: KeychainTransport {
     func create() async {
         model.start()
         await model.finishPendingOperations()
+        if model.automaticallyOpensVault { #expect(model.phase == .unlocked); return }
         #expect(model.phase == .needsSetup)
         #expect(await keychain.reads == 0)
         model.createVault()
@@ -128,6 +129,45 @@ private actor PipelineKeychain: KeychainTransport {
             for value in values { #expect(bytes.range(of: Data(value.utf8)) == nil) }
         }
     }
+}
+
+@MainActor @Test func automaticCapturePipelineStartsAndResumesWithoutImportingOldClipboard() async throws {
+    let pipeline = try ClipboardPipeline(automatic: true)
+    defer { try? FileManager.default.removeItem(at: pipeline.url.deletingLastPathComponent()) }
+    let model = pipeline.model
+    pipeline.board.externalCopy("Synthetic prelaunch clipboard")
+    await pipeline.create()
+    #expect(model.settings?.captureEnabled == true)
+    await pipeline.poll(model)
+    #expect(pipeline.board.textReads == 0)
+    let first = "Synthetic automatic pipeline café 日本語\n  preserve whitespace  "
+    pipeline.board.externalCopy(first)
+    await pipeline.poll(model)
+    #expect(model.items(query: "").count == 1)
+    model.suspend(for: .sleep)
+    await model.finishPendingOperations()
+    pipeline.board.externalCopy("Synthetic copy during sleep")
+    await pipeline.poll(model)
+    #expect(pipeline.board.textReads == 1 && model.records.isEmpty)
+    model.resume(from: .sleep)
+    await model.finishPendingOperations()
+    #expect(model.phase == .unlocked && model.settings?.captureEnabled == true)
+    await pipeline.poll(model)
+    #expect(pipeline.board.textReads == 1)
+    pipeline.board.externalCopy("Synthetic new copy after wake")
+    await pipeline.poll(model)
+    #expect(model.items(query: "").count == 2 && model.items(query: "during sleep").isEmpty)
+    model.toggleCapturePause()
+    await model.finishPendingOperations()
+    model.lock(); await model.finishPendingOperations()
+    let reopened = DesktopModel(service: DesktopVaultService(url: pipeline.url, keys: pipeline.keys), clipboard: pipeline.output, automaticallyOpensVault: true)
+    pipeline.connect(reopened)
+    reopened.start(); await reopened.finishPendingOperations()
+    #expect(reopened.phase == .unlocked && reopened.settings?.manuallyPaused == true)
+    #expect(!reopened.captureConditions.canCapture)
+    #expect(reopened.items(query: "café").first?.content.utf8.elementsEqual(first.utf8) == true)
+    try pipeline.checkEncryptedCanaries([first, "Synthetic new copy after wake"])
+    reopened.lock(); await reopened.finishPendingOperations()
 }
 
 @MainActor @Test func historyPipelineEncryptsSearchesCopiesAndReopensWithoutFeedbackOrOldImports() async throws {

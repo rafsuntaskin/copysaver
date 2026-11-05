@@ -34,6 +34,93 @@ private actor MemoryKeychain: KeychainTransport {
     func makeUnavailable() { unavailable = true }
 }
 
+private actor TestSensitiveAuthenticator: SensitiveAuthenticator {
+    var calls = 0
+    var denied = false
+    func deny() { denied = true }
+    func authenticate() throws {
+        calls += 1
+        if denied { throw KeychainFailure.cancelled }
+    }
+}
+
+@Test func automaticKeysAreSeparateAndSensitiveAuthenticationDoesNotGateOrdinaryReads() async throws {
+    let transport = MemoryKeychain()
+    let auth = TestSensitiveAuthenticator()
+    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.community.dev", protection: .automatic, transport: transport, authentication: auth)
+    let protected = try KeychainVaultKeyProvider(bundleIdentifier: provider.bundleIdentifier, transport: transport)
+    let id = UUID()
+    let key = try await provider.createKey(for: id)
+    let loaded = try await provider.loadKey(for: id)
+    #expect(key.withUnsafeBytes { Data($0) } == loaded.withUnsafeBytes { Data($0) })
+    #expect(await auth.calls == 0)
+    await #expect(throws: KeychainFailure.missingKey) { try await protected.loadKey(for: id) }
+    await auth.deny()
+    await #expect(throws: KeychainFailure.cancelled) { try await provider.authenticateSensitiveAccess(for: id) }
+    #expect(await auth.calls == 1)
+    _ = try await provider.loadKey(for: id)
+    #expect(await auth.calls == 1)
+}
+
+@Test func loginKeychainQueryDoesNotRequestProvisionedGroupsOrTrustEveryApp() throws {
+    let identity = try KeychainIdentity(bundleIdentifier: "org.example.CopySaver.community.dev", vaultID: UUID(), protection: .automatic)
+    let add = try LoginKeychainQueries.add(Data(repeating: 2, count: 32), identity: identity)
+    #expect(add[kSecUseDataProtectionKeychain as String] as? Bool == false)
+    #expect(add[kSecAttrSynchronizable as String] == nil) // File-based items are not iCloud items.
+    #expect(add[kSecAttrAccessGroup as String] == nil)
+    #expect(add[kSecAttrAccessControl as String] == nil)
+    let access = try #require(add[kSecAttrAccess as String]) as! SecAccess
+    let acls = SecAccessCopyMatchingACLList(access, kSecACLAuthorizationDecrypt) as! [SecACL]
+    #expect(!acls.isEmpty)
+    for acl in acls {
+        var apps: CFArray?
+        var description: CFString?
+        var selector = SecKeychainPromptSelector()
+        #expect(SecACLCopyContents(acl, &apps, &description, &selector) == errSecSuccess)
+        #expect(apps != nil && CFArrayGetCount(apps) == 1)
+    }
+    let read = LoginKeychainQueries.read(identity, allowInteraction: false)
+    #expect(read[kSecUseAuthenticationUI as String] as? String == kSecUseAuthenticationUIFail as String)
+    #expect(LoginKeychainQueries.read(identity, allowInteraction: true)[kSecUseAuthenticationUI as String] == nil)
+}
+
+@Test func automaticVaultPersistsCaptureChoiceAndMissingKeyNeverReplacesIt() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("copysaver-automatic-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("vault.sqlite")
+    let transport = MemoryKeychain()
+    let auth = TestSensitiveAuthenticator()
+    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.community.dev", protection: .automatic, transport: transport, authentication: auth)
+    let service = DesktopVaultService(url: url, keys: provider)
+    try await service.create()
+    var records = try await service.unlock()
+    let initial = try HistoryPolicy.settings(in: records)
+    #expect(initial.captureEnabled && !initial.manuallyPaused)
+    #expect(await auth.calls == 0)
+    records = try await service.capture(ClipboardSample(text: "Synthetic automatic café 日本語", date: Date()))
+    let disabled = try initial.updating(captureEnabled: false, manuallyPaused: true)
+    _ = try await service.updateSettings(disabled, confirmed: false)
+    await service.lock()
+    let reopened = DesktopVaultService(url: url, keys: provider)
+    #expect(try await reopened.prepare())
+    records = try await reopened.unlock()
+    #expect(try HistoryPolicy.settings(in: records) == disabled)
+    await reopened.lock()
+    let files = try ["", "-wal", "-shm"].map { suffix -> Data? in
+        let file = URL(filePath: url.path + suffix)
+        return FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
+    }
+    await transport.removeAll()
+    await #expect(throws: KeychainFailure.missingKey) { try await reopened.unlock() }
+    #expect(await transport.adds == 1)
+    for (index, suffix) in ["", "-wal", "-shm"].enumerated() {
+        let file = URL(filePath: url.path + suffix)
+        let after = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
+        #expect(files[index] == after)
+        if let after { #expect(after.range(of: Data("Synthetic automatic café 日本語".utf8)) == nil) }
+    }
+}
+
 @Test(arguments: ["", ".", "CopySaver", "org..example", "org.example bad"])
 func invalidKeychainNamespacesAreRejected(value: String) {
     #expect(throws: KeychainFailure.invalidIdentity) {
