@@ -9,53 +9,66 @@ struct FocusView: View {
     var body: some View {
         VStack(spacing: 0) {
             if model.phase == .unlocked {
-                HStack(spacing: 12) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search clipboard…", text: $model.focusQuery)
-                        .textFieldStyle(.plain).font(.system(size: 19)).focused($searchFocused)
-                        .accessibilityLabel("Search clipboard and snippets")
-                        .onSubmit { model.copySelection(dismissFocus: true) }
-                        .onKeyPress(.downArrow) { model.moveSelection(1, query: model.focusQuery); return .handled }
-                        .onKeyPress(.upArrow) { model.moveSelection(-1, query: model.focusQuery); return .handled }
-                    Text("esc").font(.system(size: 10)).foregroundStyle(.secondary).padding(5).background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
-                }.padding(22)
-                HStack {
-                    Picker("View", selection: $model.section) {
-                        Text("History").tag(LibrarySection.history)
-                        Text("Snippets").tag(LibrarySection.snippets)
-                    }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("History or snippets").frame(width: 220)
-                    Spacer()
-                    Label(model.captureStatus, systemImage: model.isPreview ? "eye" : "pause.circle")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                }.padding(.horizontal, 22).padding(.bottom, 16)
+                let visible = model.items(query: model.focusQuery)
+                VStack(spacing: 14) {
+                    LibrarySearchField(text: $model.focusQuery,
+                                       prompt: model.section == .snippets ? "Search snippets…" : "Search clipboard…",
+                                       focus: $searchFocused, prominent: true, hint: "esc",
+                                       submit: { model.copySelection(dismissFocus: true) },
+                                       move: { model.moveSelection($0, query: model.focusQuery) })
+                    HStack {
+                        Picker("View", selection: $model.section) {
+                            Text("History").tag(LibrarySection.history)
+                            Text("Snippets").tag(LibrarySection.snippets)
+                        }.pickerStyle(.segmented).labelsHidden().accessibilityLabel("History or snippets").frame(width: 190)
+                        Spacer()
+                        CaptureStatusView(model: model)
+                    }
+                }.padding(18)
                 Divider()
+                HStack {
+                    Text(model.focusQuery.isEmpty ? (model.section == .snippets ? "YOUR SNIPPETS" : "RECENT") : "RESULTS")
+                        .font(.system(size: 10, weight: .semibold)).tracking(0.7)
+                    Spacer()
+                    Text("\(visible.count)").font(.system(size: 11)).monospacedDigit()
+                }.foregroundStyle(.secondary).padding(.horizontal, 22).padding(.top, 12).padding(.bottom, 6)
                 ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 3) {
-                        ForEach(model.items(query: model.focusQuery)) { record in
-                            RecordRow(record: record, selected: record.id == model.selectedID) { model.selectRecord(record.id) }.id(record.id)
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(visible) { record in
+                                RecordRow(record: record, selected: record.id == model.selectedID, compact: true) { model.selectRecord(record.id) }.id(record.id)
+                            }
+                        }.padding(.horizontal, 10).padding(.bottom, 8)
+                    }
+                    .overlay {
+                        if visible.isEmpty {
+                            VStack(spacing: 10) {
+                                Image(systemName: "magnifyingglass").font(.system(size: 23))
+                                Text(model.focusQuery.isEmpty ? "No saved text in this view yet." : "No matching text").font(.system(size: 13))
+                                if !model.focusQuery.isEmpty { Button("Clear search") { model.focusQuery = "" }.buttonStyle(.bordered) }
+                            }.foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                        if model.items(query: model.focusQuery).isEmpty {
-                            Text(model.focusQuery.isEmpty ? "No saved text in this view yet." : "No matches. Try another search.")
-                                .font(.system(size: 13)).foregroundStyle(.secondary).padding(30)
-                        }
-                    }.padding(10)
-                }
-                .onChange(of: model.selectedID) { _, id in if let id { proxy.scrollTo(id, anchor: .center) } }
+                    }
+                    .onChange(of: model.selectedID) { _, id in if let id { proxy.scrollTo(id) } }
                 }
                 FeedbackView(model: model).padding(.horizontal, 20)
                 Divider()
-                HStack(spacing: 15) {
-                    Label("Navigate", systemImage: "arrow.up.arrow.down")
-                    Button { model.copySelection() } label: { Label("Copy", systemImage: "return") }
-                        .buttonStyle(.plain).keyboardShortcut("c", modifiers: .command).disabled(!model.canCopy)
-                    Spacer()
-                    Button("Open Library") {
+                HStack(spacing: 12) {
+                    HStack(spacing: 6) { KeyboardHint("↑↓"); Text("Navigate") }
+                        .font(.system(size: 11)).foregroundStyle(.secondary).accessibilityLabel("Navigate results with the up and down arrows")
+                    Spacer(minLength: 4)
+                    Button {
                         model.libraryQuery = model.focusQuery
                         model.onOpenLibrary?()
-                    }.buttonStyle(.plain)
-                    Button { model.lock() } label: { Image(systemName: "lock") }.buttonStyle(.plain).help(model.lockActionTitle)
-                }.font(.system(size: 11)).foregroundStyle(.secondary).padding(17)
+                    } label: { Label("Library", systemImage: "arrow.up.right.square") }.help("Open Library").accessibilityLabel("Open Library")
+                    Button { model.copySelection() } label: { HStack(spacing: 6) { Text("Copy"); KeyboardHint("⌘C") } }
+                        .keyboardShortcut("c", modifiers: .command).disabled(!model.canCopy)
+                    Button { model.copySelection(dismissFocus: true) } label: {
+                        HStack(spacing: 8) { Text("Copy & close"); Image(systemName: "return").accessibilityHidden(true) }
+                    }.buttonStyle(.borderedProminent).disabled(!model.canCopy)
+                    Button { model.lock() } label: { Image(systemName: model.lockActionSymbol) }
+                        .help(model.lockActionTitle).accessibilityLabel(model.lockActionTitle)
+                }.buttonStyle(.bordered).controlSize(.small).font(.system(size: 12)).padding(.horizontal, 18).padding(.vertical, 13)
             } else {
                 VaultGateView(model: model)
                 HStack { Spacer(); Button("Open Library") { model.onOpenLibrary?() }.buttonStyle(.plain) }.padding(16)
@@ -88,6 +101,7 @@ private struct AppearanceSettings: View {
 
 struct SettingsView: View {
     @Bindable var model: DesktopModel
+    var applicationSuggestions: [(id: String, name: String)]? = nil
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -96,7 +110,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("General").font(.headline)
                     AppearanceSettings()
-                    LoginSettingsView(preview: model.isPreview)
+                    LoginSettingsView(preview: model.isPreview, automaticallyOpensVault: model.automaticallyOpensVault)
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 12) {
@@ -110,27 +124,41 @@ struct SettingsView: View {
                     if let message = model.shortcutMessage { Label(message, systemImage: "exclamationmark.circle").foregroundStyle(.secondary) }
                 }
                 Divider()
-                HistorySettingsView(model: model)
+                HistorySettingsView(model: model, applicationSuggestions: applicationSuggestions)
                 Divider()
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Privacy & Security").font(.headline)
-                    Text(model.automaticallyOpensVault ? "Your library opens automatically. Saved text is encrypted, with its key kept separately in your macOS login Keychain. Hide and pause clears the interface and stops capture until you reopen it." : "Stored content is encrypted locally. Locking pauses capture and clears decrypted content from the interface.")
-                    if model.automaticallyOpensVault {
-                        Text("A copied database cannot be read without its key. This does not protect against someone controlling your unlocked account or able to unlock your Keychain. Sensitive snippet actions still ask for authentication.").foregroundStyle(.secondary)
-                        Text("This library is separate from earlier protected builds. Those saved items remain in the earlier app; they are not automatically imported.").foregroundStyle(.secondary)
-                    }
-                    Text("Portable encrypted backup is not available yet. Keep another copy of important information.").foregroundStyle(.secondary)
-                }
+                LibraryPrivacySection(model: model)
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Sidebar & desktop widget").font(.headline)
                     Text("In a build with the widget extension, open Notification Center, choose Edit Widgets, search for CopySaver, and add the small or medium launcher. Drag a widget to the desktop if you prefer. Widgets contain navigation only; saved text stays inside the app.").foregroundStyle(.secondary)
                     Divider()
                     Text("About CopySaver").font(.headline)
-                    Text("Development build · local storage · MIT license").foregroundStyle(.secondary)
+                    Text(versionLabel).foregroundStyle(.secondary)
+                    Text("\(model.automaticallyOpensVault ? "Automatic library" : "Protected library") · local storage · MIT license").foregroundStyle(.secondary)
                 }
-            }.font(.system(size: 13)).padding(.top, 60).padding(.horizontal, 36).padding(.bottom, 36).frame(maxWidth: 660, alignment: .leading)
+            }.font(.system(size: 13)).padding(.top, 48).padding(.horizontal, 36).padding(.bottom, 36).frame(maxWidth: 660, alignment: .leading)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var versionLabel: String {
+        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String else { return "Development preview" }
+        return "Version \(version) (\(build))"
+    }
+}
+
+struct LibraryPrivacySection: View {
+    var model: DesktopModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Privacy & Storage").font(.headline)
+            Label("Encrypted on this Mac", systemImage: "externaldrive.badge.checkmark")
+            Text(model.automaticallyOpensVault ? "Your library opens automatically with your user session. Hide and pause clears the interface and stops capture until you reopen it." : "Locking pauses capture and clears decrypted content from the interface.").foregroundStyle(.secondary)
+            if model.automaticallyOpensVault {
+                Text("Sensitive snippets hide their text in previews and search. Choose Show text or Edit snippet when you need the body.").foregroundStyle(.secondary)
+            }
+            Text("Portable encrypted backup is not available yet. Keep another copy of important information.").foregroundStyle(.secondary)
+        }.fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -142,6 +170,7 @@ struct AppearanceRoot<Content: View>: View {
 
 private struct HistorySettingsView: View {
     @Bindable var model: DesktopModel
+    var applicationSuggestions: [(id: String, name: String)]? = nil
     @State private var count = 1_000
     @State private var days = 30
     @State private var timeout = IdleLockTimeout.fifteenMinutes
@@ -159,7 +188,7 @@ private struct HistorySettingsView: View {
                     .disabled(model.isPreview || model.isBusy)
                 Text(model.automaticallyOpensVault ? "Capture starts when the app opens and resumes after sleep. Pause and History off are remembered. Copies made before starting or resuming are skipped." : "Capture pauses while locked. Copies made before enabling or resuming are skipped.").foregroundStyle(.secondary)
                 HStack {
-                    Label(model.captureStatus, systemImage: model.captureConditions.canCapture ? "record.circle" : "pause.circle")
+                    CaptureStatusView(model: model)
                     if settings.captureEnabled {
                         Button(settings.manuallyPaused ? "Resume" : "Pause") { model.toggleCapturePause() }.disabled(model.isBusy || model.isPreview)
                     }
@@ -199,7 +228,7 @@ private struct HistorySettingsView: View {
                     Button("Apply history settings") { proposeSettings(settings) }.disabled(model.isBusy || model.isPreview)
                     Button("Clear history…", role: .destructive) { confirmClear = true }.disabled(model.isBusy || model.isPreview)
                 }
-            } else { Text("Unlock the vault to change history preferences.").foregroundStyle(.secondary) }
+            } else { Text(model.automaticallyOpensVault ? "Open your library to change history preferences." : "Unlock the vault to change history preferences.").foregroundStyle(.secondary) }
             Text("Concealed and transient copies are always skipped. Private-key and card-number filters can miss secrets; explicitly save private text as a sensitive snippet.").foregroundStyle(.secondary)
         }
         .task { load() }
@@ -220,7 +249,11 @@ private struct HistorySettingsView: View {
         excluded = settings.excludedBundleIDs.sorted().joined(separator: "\n")
     }
     private var installedManagers: [(id: String, name: String)] {
-        [("com.1password.1password", "1Password"), ("com.agilebits.onepassword7", "1Password 7"),
+        if let applicationSuggestions {
+            let existing = Set(excluded.split(whereSeparator: \.isNewline).map(String.init))
+            return applicationSuggestions.filter { !existing.contains($0.id) }
+        }
+        return [("com.1password.1password", "1Password"), ("com.agilebits.onepassword7", "1Password 7"),
          ("com.bitwarden.desktop", "Bitwarden"), ("org.keepassxc.keepassxc", "KeePassXC")].compactMap { id, name in
             guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) != nil,
                   !excluded.split(whereSeparator: \.isNewline).contains(Substring(id)) else { return nil }

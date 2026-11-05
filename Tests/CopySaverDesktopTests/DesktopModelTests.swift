@@ -4,6 +4,8 @@ import CopySaverDomain
 import CopySaverPlatform
 import CopySaverVault
 import Foundation
+import Observation
+import os
 import Testing
 
 private actor TestVault: DesktopVaultAccess {
@@ -253,6 +255,106 @@ private func sensitiveRecord() throws -> VaultRecord {
     await model.finishPendingOperations()
 }
 
+@MainActor @Test func communitySensitiveActionsTrustOpenSessionAndKeepConcealment() async throws {
+    let record = try sensitiveRecord()
+    let vault = TestVault(records: [record], authenticationFailure: .cancelled)
+    let clipboard = TestClipboard()
+    let model = DesktopModel(service: vault, clipboard: clipboard, automaticallyOpensVault: true)
+    model.section = .snippets
+    model.start(); await model.finishPendingOperations()
+    #expect(model.phase == .unlocked && !model.requiresSensitiveAuthentication)
+    #expect(model.detailText(for: record) == "Sensitive content")
+    #expect(model.items(query: "private body").isEmpty)
+    model.revealSelection(); await model.finishPendingOperations()
+    #expect(model.revealedID == record.id)
+    model.setPresentationActive(false)
+    #expect(model.revealedID == nil)
+    model.setPresentationActive(true)
+    model.copySelection(); await model.finishPendingOperations()
+    #expect(clipboard.copies == 1 && model.notice == "Copied")
+    model.editSelection(); await model.finishPendingOperations()
+    #expect(model.editingSnippet?.id == record.id && !model.draftIsConcealed)
+    model.setPresentationActive(false); model.setPresentationActive(true)
+    #expect(model.draftIsConcealed)
+    model.resumeSensitiveDraft(); await model.finishPendingOperations()
+    #expect(!model.draftIsConcealed)
+    model.draftBody = "Synthetic revised community body"
+    model.draftSensitive = false
+    model.saveDraft(); await model.finishPendingOperations()
+    #expect(model.selectedRecord?.content == "Synthetic revised community body")
+    #expect(model.selectedRecord?.isSensitive == false)
+    #expect(await vault.authenticationCalls == 0)
+    model.lock(); await model.finishPendingOperations()
+    #expect(model.records.isEmpty && model.draftBody.isEmpty)
+}
+
+@MainActor @Test func searchResultsRefreshAfterEditsPinDeleteAndReopen() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let older = try VaultRecord(.history(HistoryItem(text: "Synthetic older café", firstSeenAt: date, lastSeenAt: date)))
+    let recent = try VaultRecord(.history(HistoryItem(text: "Synthetic recent 東京", firstSeenAt: date, lastSeenAt: date.addingTimeInterval(60))))
+    let ordinary = try VaultRecord(.snippet(Snippet(name: "Alpha", body: "Synthetic visible needle", createdAt: date, updatedAt: date)))
+    let hidden = try VaultRecord(.snippet(Snippet(name: "Bravo", body: "Synthetic hidden needle", isSensitive: true, createdAt: date, updatedAt: date)))
+    let vault = TestVault(records: [older, hidden, recent, ordinary])
+    let model = DesktopModel(service: vault, clipboard: nil, automaticallyOpensVault: true)
+    model.start(); await model.finishPendingOperations()
+    #expect(model.items(query: "").map(\.id) == [recent.id, older.id])
+    #expect(model.items(query: "CAFÉ").map(\.id) == [older.id])
+    #expect(model.items(query: "needle", section: .snippets).map(\.id) == [ordinary.id])
+    #expect(model.items(query: "needle", section: .snippets).map(\.id) == [ordinary.id])
+    model.navigate(to: .snippets); model.selectRecord(ordinary.id)
+    model.editSelection(); await model.finishPendingOperations()
+    model.draftSensitive = true
+    model.saveDraft(); await model.finishPendingOperations()
+    #expect(model.items(query: "needle").isEmpty) // Never reuse the formerly searchable body.
+    #expect(model.items(query: "Alpha").first?.isSensitive == true)
+    model.navigate(to: .history); model.selectRecord(recent.id)
+    #expect(model.items(query: "", section: .pinned).isEmpty)
+    model.toggleSelectedPin(); await model.finishPendingOperations()
+    #expect(model.items(query: "", section: .pinned).map(\.id) == [recent.id])
+    model.deleteSelection(); await model.finishPendingOperations()
+    #expect(model.items(query: "").map(\.id) == [older.id])
+    model.lock(); await model.finishPendingOperations()
+    #expect(model.items(query: "").isEmpty && model.items(query: "Alpha", section: .snippets).isEmpty)
+    _ = await vault.delete(older.id)
+    let replacement = try VaultRecord(.history(HistoryItem(text: "Synthetic replacement", firstSeenAt: date, lastSeenAt: date)))
+    _ = await vault.save(replacement)
+    await model.unlock()?.value
+    #expect(model.items(query: "").map(\.id) == [replacement.id])
+    #expect(model.items(query: "CAFÉ").isEmpty)
+}
+
+@MainActor @Test func cachedResultsStillNotifyViewsWhenRecordsChange() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.history(HistoryItem(text: "Synthetic observed result", firstSeenAt: date, lastSeenAt: date)))
+    let model = DesktopModel(service: TestVault(records: [record]), clipboard: nil, automaticallyOpensVault: true)
+    model.start(); await model.finishPendingOperations()
+    _ = model.items(query: "") // Warm the result before establishing SwiftUI-style observation.
+    let changed = OSAllocatedUnfairLock(initialState: false)
+    withObservationTracking { _ = model.items(query: "") } onChange: { changed.withLock { $0 = true } }
+    model.toggleSelectedPin(); await model.finishPendingOperations()
+    #expect(changed.withLock { $0 })
+    #expect(model.items(query: "", section: .pinned).map(\.id) == [record.id])
+}
+
+@MainActor @Test func arrowSelectionRespectsDirtyDraftAndKeepsCompactSearchVisible() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let first = try VaultRecord(.snippet(Snippet(name: "Alpha", body: "Synthetic first", createdAt: date, updatedAt: date)))
+    let second = try VaultRecord(.snippet(Snippet(name: "Bravo", body: "Synthetic second", createdAt: date, updatedAt: date)))
+    let model = DesktopModel(service: TestVault(records: [first, second]), clipboard: nil, automaticallyOpensVault: true)
+    model.start(); await model.finishPendingOperations()
+    model.navigate(to: .snippets); model.ensureSelection(query: "")
+    model.editSelection(); await model.finishPendingOperations()
+    model.draftBody = "Synthetic unsaved edits"
+    model.onConfirmDiscardDraft = { false }
+    model.moveSelection(1, query: "")
+    #expect(model.selectedID == first.id && model.draftBody == "Synthetic unsaved edits")
+    model.onConfirmDiscardDraft = { true }
+    model.compactShowDetail = false
+    model.moveSelection(1, query: "")
+    #expect(model.selectedID == second.id && !model.isCreatingSnippet)
+    #expect(!model.compactShowDetail) // Arrows highlight results; selecting a row opens compact detail.
+}
+
 @MainActor @Test func lateSensitiveCopyCannotResumeAfterDeactivationAndReactivation() async throws {
     let gate = TestGate()
     let vault = TestVault(records: [try sensitiveRecord()], authenticationGate: gate)
@@ -333,10 +435,10 @@ private func sensitiveRecord() throws -> VaultRecord {
     model.start(); await model.finishPendingOperations(); await model.unlock()?.value
     model.editSelection(); await model.finishPendingOperations()
     #expect(await vault.authenticationCalls == 1)
-    #expect(model.editingSnippet?.id == record.id && !model.draftNeedsAuthentication)
+    #expect(model.editingSnippet?.id == record.id && !model.draftIsConcealed)
     model.draftSensitive = false
     model.setPresentationActive(false)
-    #expect(model.draftNeedsAuthentication)
+    #expect(model.draftIsConcealed)
     model.setPresentationActive(true)
     model.resumeSensitiveDraft(); await model.finishPendingOperations()
     #expect(await vault.authenticationCalls == 2)
@@ -439,6 +541,7 @@ func representativeSearchBenchmark() async throws {
     let model = DesktopModel(service: TestVault(records: records), clipboard: nil)
     model.start(); await model.finishPendingOperations(); await model.unlock()?.value
     var times: [Double] = []
+    var navigationTimes: [Double] = []
     let clock = ContinuousClock()
     for index in 0..<80 {
         model.section = index % 2 == 0 ? .history : .snippets
@@ -448,9 +551,20 @@ func representativeSearchBenchmark() async throws {
         let elapsed = start.duration(to: clock.now).components
         times.append(Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
         #expect(matches.count <= (model.section == .history ? 5_000 : 2_000))
+        model.libraryQuery = query
+        model.ensureSelection(query: query)
+        let navigationStart = clock.now
+        for _ in 0..<10 {
+            model.moveSelection(1, query: query)
+            #expect((model.selectedRecord != nil) == !matches.isEmpty)
+        }
+        let navigation = navigationStart.duration(to: clock.now).components
+        navigationTimes.append((Double(navigation.seconds) * 1_000 + Double(navigation.attoseconds) / 1e15) / 10)
     }
     times.sort()
     print(String(format: "BENCH search records=7000 samples=80 p50_ms=%.2f p95_ms=%.2f", times[40], times[75]))
+    navigationTimes.sort()
+    print(String(format: "BENCH selection records=7000 samples=80 steps=10 p50_ms=%.3f p95_ms=%.3f", navigationTimes[40], navigationTimes[75]))
 }
 
 private struct BenchmarkKeys: VaultKeyProvider {

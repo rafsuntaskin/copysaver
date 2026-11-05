@@ -17,13 +17,20 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
 
 @MainActor @Observable public final class DesktopModel {
     public private(set) var phase: DesktopPhase = .loading
-    public private(set) var records: [VaultRecord] = []
+    public private(set) var records: [VaultRecord] = [] {
+        didSet {
+            sortedItems.removeAll()
+            queryResults.removeAll()
+        }
+    }
     public private(set) var isBusy = false
     public private(set) var errorMessage: String?
     public private(set) var notice: String?
     public let isPreview: Bool
     public let automaticallyOpensVault: Bool
+    public var requiresSensitiveAuthentication: Bool { !automaticallyOpensVault }
     public var lockActionTitle: String { automaticallyOpensVault ? "Hide and pause" : "Lock vault" }
+    public var lockActionSymbol: String { automaticallyOpensVault ? "eye.slash" : "lock" }
     public var section: LibrarySection = .history
     public var libraryQuery = ""
     public var focusQuery = ""
@@ -69,6 +76,10 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     @ObservationIgnored private var manuallyHidden = false
     @ObservationIgnored private var automaticOpenFailed = false
     @ObservationIgnored private var resumeOperation: Task<Void, Never>?
+    // Bounded to one ordering and one query per section, only in the open session.
+    // Every record replacement (including lock's empty array) releases these values.
+    @ObservationIgnored private var sortedItems: [LibrarySection: [VaultRecord]] = [:]
+    @ObservationIgnored private var queryResults: [LibrarySection: (query: String, records: [VaultRecord])] = [:]
 
     func finishPendingOperations() async {
         await operation?.value
@@ -107,14 +118,19 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         return !draftName.utf8.elementsEqual(original.name.utf8) || !draftBody.utf8.elementsEqual(original.body.utf8) ||
             !draftCategory.utf8.elementsEqual((original.category ?? "").utf8) || draftSensitive != original.isSensitive
     }
-    public var draftNeedsAuthentication: Bool { isCreatingSnippet && (draftSensitive || editingSnippet?.isSensitive == true) && !draftAuthorized }
+    public var draftIsConcealed: Bool { isCreatingSnippet && (draftSensitive || editingSnippet?.isSensitive == true) && !draftAuthorized }
     public func navigate(to section: LibrarySection) { self.section = section; libraryQuery = ""; compactShowDetail = false }
     @discardableResult public func selectRecord(_ id: UUID) -> Bool {
+        guard finishDraftForSelection() else { return false }
+        selectedID = id; compactShowDetail = true
+        return true
+    }
+
+    private func finishDraftForSelection() -> Bool {
         if isCreatingSnippet {
             if hasDirtyDraft && onConfirmDiscardDraft?() != true { return false }
             discardDraft()
         }
-        selectedID = id; compactShowDetail = true
         return true
     }
 
@@ -179,25 +195,37 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
 
     public func items(query: String, section explicitSection: LibrarySection? = nil) -> [VaultRecord] {
         guard phase == .unlocked else { return [] }
+        // Read on cache hits too, so SwiftUI continues observing capture/edit updates.
+        let source = records
         let selectedSection = explicitSection ?? section
-        return records.filter { record in
-            let searchable: String
+        if let cached = queryResults[selectedSection], cached.query == query { return cached.records }
+        let ordered: [VaultRecord]
+        if let cached = sortedItems[selectedSection] { ordered = cached }
+        else {
+            ordered = source.filter { record in
+                switch record.payload {
+                case .history(let item): selectedSection == .history || (selectedSection == .pinned && item.isPinned)
+                case .snippet: selectedSection == .snippets
+                default: false
+                }
+            }.sorted { lhs, rhs in
+                if case .history(let left) = lhs.payload, case .history(let right) = rhs.payload {
+                    return left.lastSeenAt > right.lastSeenAt
+                }
+                return lhs.displayTitle.localizedStandardCompare(rhs.displayTitle) == .orderedAscending
+            }
+            sortedItems[selectedSection] = ordered
+        }
+        let matches = query.isEmpty ? ordered : ordered.filter { record in
             switch record.payload {
-            case .history(let item):
-                guard selectedSection == .history || (selectedSection == .pinned && item.isPinned) else { return false }
-                searchable = item.text
+            case .history(let item): return item.text.localizedStandardContains(query)
             case .snippet(let item):
-                guard selectedSection == .snippets else { return false }
-                searchable = item.name + "\n" + (item.category ?? "") + (item.isSensitive ? "" : "\n" + item.body)
+                return (item.name + "\n" + (item.category ?? "") + (item.isSensitive ? "" : "\n" + item.body)).localizedStandardContains(query)
             default: return false
             }
-            return query.isEmpty || searchable.localizedStandardContains(query)
-        }.sorted { lhs, rhs in
-            if case .history(let left) = lhs.payload, case .history(let right) = rhs.payload {
-                return left.lastSeenAt > right.lastSeenAt
-            }
-            return lhs.displayTitle.localizedStandardCompare(rhs.displayTitle) == .orderedAscending
         }
+        queryResults[selectedSection] = (query, matches)
+        return matches
     }
 
     public func ensureSelection(query: String) {
@@ -211,7 +239,9 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         let visible = items(query: query)
         guard !visible.isEmpty else { return }
         let index = visible.firstIndex { $0.id == selectedID } ?? 0
-        selectedID = visible[min(max(index + delta, 0), visible.count - 1)].id
+        let next = visible[min(max(index + delta, 0), visible.count - 1)].id
+        guard next != selectedID, finishDraftForSelection() else { return }
+        selectedID = next
     }
 
     public func start() {
@@ -219,7 +249,7 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         guard (phase == .loading || phase == .failed), !isBusy else { return }
         guard let service else {
             phase = .failed
-            errorMessage = "Launch the CopySaver app bundle to configure its protected vault."
+            errorMessage = "Launch the CopySaver app bundle to open its local library."
             return
         }
         if automaticallyOpensVault {
@@ -358,8 +388,9 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         if hasDirtyDraft && onConfirmDiscardDraft?() != true { return }
         if snippet.isSensitive { concealSensitiveContent() }
         let presentation = sensitivePresentation
+        let authenticate = requiresSensitiveAuthentication
         run(fallback: .unlocked, work: {
-            if snippet.isSensitive { try await service.authenticateSensitiveAccess() }
+            if snippet.isSensitive && authenticate { try await service.authenticateSensitiveAccess() }
             return snippet
         }) { [weak self] snippet in
             guard let self, self.selectedRecord?.id == snippet.id,
@@ -373,9 +404,12 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     }
 
     public func resumeSensitiveDraft() {
-        guard !isPreview, draftNeedsAuthentication, !isBusy, let service else { return }
+        guard !isPreview, draftIsConcealed, !isBusy, let service else { return }
         let presentation = sensitivePresentation
-        run(fallback: .unlocked, work: { try await service.authenticateSensitiveAccess() }) { [weak self] _ in
+        let authenticate = requiresSensitiveAuthentication
+        run(fallback: .unlocked, work: {
+            if authenticate { try await service.authenticateSensitiveAccess() }
+        }) { [weak self] _ in
             guard let self, self.presentationActive, self.sensitivePresentation == presentation, self.isCreatingSnippet else { return }
             self.draftAuthorized = true
         }
@@ -404,7 +438,7 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     }
 
     public func saveDraft() {
-        guard phase == .unlocked, !isPreview, !isBusy, !draftNeedsAuthentication, let service else { return }
+        guard phase == .unlocked, !isPreview, !isBusy, !draftIsConcealed, let service else { return }
         do {
             let now = Date()
             let original = editingSnippet
@@ -417,9 +451,10 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
                                       updatedAt: max(original?.updatedAt ?? now, now), lastCopiedAt: latestCopy)
             let record = try VaultRecord(.snippet(snippet))
             let presentation = sensitivePresentation
+            let authenticate = requiresSensitiveAuthentication
             run(fallback: .unlocked, work: { [weak self] in
                 if original?.isSensitive == true {
-                    try await service.authenticateSensitiveAccess()
+                    if authenticate { try await service.authenticateSensitiveAccess() }
                     let admitted = await MainActor.run { self?.sensitivePresentation == presentation && self?.presentationActive == true }
                     guard admitted else { throw CancellationError() }
                 }
@@ -446,7 +481,10 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         guard !isPreview, !isBusy, let service, let record = selectedRecord, record.isSensitive else { return }
         concealSensitiveContent()
         let presentation = sensitivePresentation
-        run(fallback: .unlocked, work: { try await service.authenticateSensitiveAccess() }) { [weak self] _ in
+        let authenticate = requiresSensitiveAuthentication
+        run(fallback: .unlocked, work: {
+            if authenticate { try await service.authenticateSensitiveAccess() }
+        }) { [weak self] _ in
             guard let self, self.selectedID == record.id, self.sensitivePresentation == presentation, self.presentationActive else { return }
             self.revealedID = record.id
             self.revealExpiry = Task { [weak self] in
@@ -484,11 +522,12 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         if record.isSensitive { concealSensitiveContent() }
         let presentation = sensitivePresentation
         let request = generation
+        let authenticate = requiresSensitiveAuthentication
         operation?.cancel(); isBusy = true; notice = nil; errorMessage = nil
         operation = Task { [weak self] in
             var copied = false
             do {
-                if record.isSensitive { try await service.authenticateSensitiveAccess() }
+                if record.isSensitive && authenticate { try await service.authenticateSensitiveAccess() }
                 guard let self, self.generation == request, !Task.isCancelled,
                       self.selectedRecord?.id == record.id, let clipboard = self.clipboard,
                       !record.isSensitive || (self.presentationActive && self.sensitivePresentation == presentation) else {
@@ -518,12 +557,13 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     }
 
     public func copyDraftText(_ text: String, onSuccess: @escaping @MainActor () -> Void) {
-        guard !isPreview, !isBusy, phase == .unlocked, isCreatingSnippet, !draftNeedsAuthentication,
+        guard !isPreview, !isBusy, phase == .unlocked, isCreatingSnippet, !draftIsConcealed,
               text.utf8.count <= RecordLimits.maximumTextBytes, let service, let clipboard else { return }
         let sensitive = draftSensitive || editingSnippet?.isSensitive == true
         let presentation = sensitivePresentation
+        let authenticate = requiresSensitiveAuthentication
         run(fallback: .unlocked, work: {
-            if sensitive { try await service.authenticateSensitiveAccess() }
+            if sensitive && authenticate { try await service.authenticateSensitiveAccess() }
         }) { [weak self] _ in
             guard let self, self.isCreatingSnippet,
                   !sensitive || (self.presentationActive && self.sensitivePresentation == presentation) else { return }
@@ -593,9 +633,9 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         case HistoryFailure.confirmationRequired: "Review and confirm the history cleanup before changing these limits."
         case RecordValidationError.emptyText: "Enter some text to save."
         case RecordValidationError.textTooLarge: "This text exceeds the 256 KiB limit."
-        case KeychainFailure.missingEntitlement: "macOS Keychain requires a correctly development-signed build of CopySaver."
+        case KeychainFailure.missingEntitlement: "macOS could not access this app’s Keychain storage. Your saved files have been preserved."
         case KeychainFailure.missingKey: "This vault’s encryption key is missing. The saved files have been preserved."
-        case KeychainFailure.authenticationFailed: "Authentication failed. Please unlock again."
+        case KeychainFailure.authenticationFailed: "Keychain access was not approved. Try opening the library again."
         case KeychainFailure.interactionRequired: "macOS Keychain access needs approval. Unlock your login Keychain or reopen the library to retry."
         case VaultError.payloadBudgetExceeded: "The encrypted storage limit has been reached."
         case VaultError.unsupportedDatabaseVersion, VaultError.unsupportedEnvelopeVersion: "This vault needs a compatible version of CopySaver."

@@ -34,32 +34,18 @@ private actor MemoryKeychain: KeychainTransport {
     func makeUnavailable() { unavailable = true }
 }
 
-private actor TestSensitiveAuthenticator: SensitiveAuthenticator {
-    var calls = 0
-    var denied = false
-    func deny() { denied = true }
-    func authenticate() throws {
-        calls += 1
-        if denied { throw KeychainFailure.cancelled }
-    }
-}
-
-@Test func automaticKeysAreSeparateAndSensitiveAuthenticationDoesNotGateOrdinaryReads() async throws {
+@Test func automaticKeysAreSeparateAndResetKeyCheckPreservesMissingKeyFailure() async throws {
     let transport = MemoryKeychain()
-    let auth = TestSensitiveAuthenticator()
-    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.community.dev", protection: .automatic, transport: transport, authentication: auth)
+    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.community.dev", protection: .automatic, transport: transport)
     let protected = try KeychainVaultKeyProvider(bundleIdentifier: provider.bundleIdentifier, transport: transport)
     let id = UUID()
     let key = try await provider.createKey(for: id)
     let loaded = try await provider.loadKey(for: id)
     #expect(key.withUnsafeBytes { Data($0) } == loaded.withUnsafeBytes { Data($0) })
-    #expect(await auth.calls == 0)
     await #expect(throws: KeychainFailure.missingKey) { try await protected.loadKey(for: id) }
-    await auth.deny()
-    await #expect(throws: KeychainFailure.cancelled) { try await provider.authenticateSensitiveAccess(for: id) }
-    #expect(await auth.calls == 1)
-    _ = try await provider.loadKey(for: id)
-    #expect(await auth.calls == 1)
+    try await provider.authenticateSensitiveAccess(for: id)
+    await transport.removeAll()
+    await #expect(throws: KeychainFailure.missingKey) { try await provider.authenticateSensitiveAccess(for: id) }
 }
 
 @Test func loginKeychainQueryDoesNotRequestProvisionedGroupsOrTrustEveryApp() throws {
@@ -89,14 +75,15 @@ private actor TestSensitiveAuthenticator: SensitiveAuthenticator {
     defer { try? FileManager.default.removeItem(at: directory) }
     let url = directory.appendingPathComponent("vault.sqlite")
     let transport = MemoryKeychain()
-    let auth = TestSensitiveAuthenticator()
-    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.community.dev", protection: .automatic, transport: transport, authentication: auth)
+    let provider = try KeychainVaultKeyProvider(bundleIdentifier: "org.example.CopySaver.community.dev", protection: .automatic, transport: transport)
     let service = DesktopVaultService(url: url, keys: provider)
     try await service.create()
     var records = try await service.unlock()
     let initial = try HistoryPolicy.settings(in: records)
     #expect(initial.captureEnabled && !initial.manuallyPaused)
-    #expect(await auth.calls == 0)
+    let reads = await transport.reads
+    try await service.authenticateSensitiveAccess()
+    #expect(await transport.reads == reads) // Open community actions do not re-read/authenticate the key.
     records = try await service.capture(ClipboardSample(text: "Synthetic automatic café 日本語", date: Date()))
     let disabled = try initial.updating(captureEnabled: false, manuallyPaused: true)
     _ = try await service.updateSettings(disabled, confirmed: false)

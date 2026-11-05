@@ -51,7 +51,7 @@ public enum CopySaverApplication {
         if preview {
             clipboard = nil
             monitor = nil
-            model = DesktopModel(service: nil, clipboard: nil, preview: true)
+            model = DesktopModel(service: nil, clipboard: nil, preview: true, automaticallyOpensVault: automatic)
         } else if let identifier,
                   let keys = try? KeychainVaultKeyProvider(bundleIdentifier: identifier, protection: automatic ? .automatic : .userPresence),
                   let support = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
@@ -63,7 +63,7 @@ public enum CopySaverApplication {
         } else {
             clipboard = nil
             monitor = nil
-            model = DesktopModel(service: nil, clipboard: nil)
+            model = DesktopModel(service: nil, clipboard: nil, automaticallyOpensVault: automatic)
         }
         super.init()
     }
@@ -282,7 +282,7 @@ public enum CopySaverApplication {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = NSImage(systemSymbolName: "clipboard", accessibilityDescription: "CopySaver")
         let menu = NSMenu()
-        for (title, action) in [("Open Focus Mode", #selector(toggleFocus)), ("Open Library", #selector(openLibrary)), ("Lock Vault", #selector(lockVault)), ("Quit CopySaver", #selector(quit))] {
+        for (title, action) in [("Open Focus Mode", #selector(toggleFocus)), ("Open Library", #selector(openLibrary)), (model.lockActionTitle, #selector(lockVault)), ("Quit CopySaver", #selector(quit))] {
             let entry = NSMenuItem(title: title, action: action, keyEquivalent: title == "Quit CopySaver" ? "q" : "")
             entry.target = self
             menu.addItem(entry)

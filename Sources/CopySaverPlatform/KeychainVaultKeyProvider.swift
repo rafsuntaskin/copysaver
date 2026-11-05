@@ -46,18 +46,15 @@ public struct KeychainVaultKeyProvider: VaultKeyProvider, Sendable {
     public let bundleIdentifier: String
     public let protection: KeychainProtection
     private let transport: any KeychainTransport
-    private let authentication: any SensitiveAuthenticator
 
     public init(
         bundleIdentifier: String, protection: KeychainProtection = .userPresence,
-        transport: (any KeychainTransport)? = nil,
-        authentication: any SensitiveAuthenticator = SystemSensitiveAuthenticator()
+        transport: (any KeychainTransport)? = nil
     ) throws {
         _ = try KeychainIdentity(bundleIdentifier: bundleIdentifier, vaultID: UUID())
         self.bundleIdentifier = bundleIdentifier
         self.protection = protection
         self.transport = transport ?? (protection == .automatic ? SystemLoginKeychainTransport() : SystemKeychainTransport())
-        self.authentication = authentication
     }
 
     public func createKey(for vaultID: UUID) async throws -> SymmetricKey {
@@ -73,13 +70,9 @@ public struct KeychainVaultKeyProvider: VaultKeyProvider, Sendable {
     }
 
     public func authenticateSensitiveAccess(for vaultID: UUID) async throws {
-        if protection == .automatic {
-            // A UI safeguard, not a cryptographic user-presence boundary for this profile.
-            _ = try await loadKey(for: vaultID, reason: "Access a sensitive CopySaver snippet")
-            try await authentication.authenticate()
-        } else {
-            _ = try await loadKey(for: vaultID, reason: "Access a sensitive CopySaver snippet")
-        }
+        // The automatic profile uses this only for reset's missing-key check.
+        // The protected transport enforces fresh user presence on the key read.
+        _ = try await loadKey(for: vaultID, reason: "Access a sensitive CopySaver snippet")
     }
 
     public func deleteKey(for vaultID: UUID) async throws {
@@ -150,7 +143,7 @@ enum KeychainQueries {
 
 /// The context is configured before dispatch. Only invalidation crosses threads,
 /// which LocalAuthentication provides to interrupt a pending evaluation.
-final class AuthenticationAttempt: @unchecked Sendable {
+private final class AuthenticationAttempt: @unchecked Sendable {
     let context = LAContext()
     private let lock = NSLock()
     private var cancelled = false

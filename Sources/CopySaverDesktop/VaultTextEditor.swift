@@ -14,8 +14,11 @@ struct VaultTextEditor: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
         scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
         guard let textView = scroll.documentView as? NSTextView else { return scroll }
         let editor = PolicyTextView(frame: textView.frame)
+        editor.drawsBackground = false
+        editor.textColor = .labelColor
         editor.isRichText = false; editor.importsGraphics = false; editor.allowsUndo = true
         editor.isAutomaticDataDetectionEnabled = false; editor.isAutomaticLinkDetectionEnabled = false
         editor.isContinuousSpellCheckingEnabled = false; editor.isGrammarCheckingEnabled = false
