@@ -5,6 +5,23 @@ import CopySaverPlatform
 import SwiftUI
 import Testing
 
+private struct RenderWebsiteLoader: WebsitePreviewLoading {
+    func load(_ url: URL) async throws -> WebsitePreview {
+        let bytes = await MainActor.run {
+            let image = NSImage(size: NSSize(width: 320, height: 180), flipped: false) { rect in
+                NSColor.systemBlue.setFill(); rect.fill()
+                NSColor.white.withAlphaComponent(0.9).setFill()
+                NSBezierPath(roundedRect: NSRect(x: 30, y: 40, width: 110, height: 100), xRadius: 12, yRadius: 12).fill()
+                NSBezierPath(roundedRect: NSRect(x: 164, y: 95, width: 120, height: 16), xRadius: 8, yRadius: 8).fill()
+                NSBezierPath(roundedRect: NSRect(x: 164, y: 64, width: 90, height: 12), xRadius: 6, yRadius: 6).fill()
+                return true
+            }
+            return image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:))?.representation(using: .png, properties: [:])
+        }
+        return WebsitePreview(title: "Synthetic website title", summary: "A useful page description loaded from website metadata.", image: bytes, host: "example.com")
+    }
+}
+
 private actor RenderVault: DesktopVaultAccess {
     var values: [VaultRecord]
     init(_ values: [VaultRecord]) { self.values = values }
@@ -42,7 +59,7 @@ func renderCommunityUIFixtures() async throws {
     records.append(long)
     records.append(try VaultRecord(.settings(VaultSettings(captureEnabled: true))))
     let vault = RenderVault(records)
-    let model = DesktopModel(service: vault, clipboard: nil, automaticallyOpensVault: true)
+    let model = DesktopModel(service: vault, clipboard: nil, automaticallyOpensVault: true, websitePreviewLoader: RenderWebsiteLoader())
     model.clipboardPermission = .allowed
     model.start(); await model.finishPendingOperations()
     #expect(model.phase == .unlocked)
@@ -53,8 +70,13 @@ func renderCommunityUIFixtures() async throws {
         try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 1040, height: 680), to: directory.appendingPathComponent("library-\(name).png"))
         for (kind, record) in previewExamples.sorted(by: { $0.key < $1.key }) {
             model.selectRecord(record.id)
+            if kind == "link" { model.loadWebsitePreview(); await model.finishWebsitePreview() }
             try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 1040, height: 680), to: directory.appendingPathComponent("preview-\(kind)-\(name).png"))
             if kind == "link" || kind == "json" {
+                if kind == "link" {
+                    await Task.yield()
+                    model.loadWebsitePreview(); await model.finishWebsitePreview()
+                }
                 try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 480, height: 540), to: directory.appendingPathComponent("preview-\(kind)-minimum-\(name).png"))
             }
         }
@@ -126,7 +148,7 @@ func sidebarFocusOutlineFollowsKeyWindow() throws {
 
 @discardableResult @MainActor private func render<Content: View>(_ content: Content, scheme: ColorScheme, size: NSSize, to url: URL) throws -> Data {
     _ = NSApplication.shared
-    let hosting = NSHostingView(rootView: content.environment(\.colorScheme, scheme))
+    let hosting = NSHostingView(rootView: content.environment(\.colorScheme, scheme).environment(\.copySaverWindowIsKey, true))
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     window.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
@@ -246,4 +268,26 @@ private struct SidebarStatesFixture: View {
         Label(title, systemImage: "clock").font(.system(size: 13))
             .frame(maxWidth: .infinity, alignment: .leading).padding(10).background(surface)
     }
+}
+
+@MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["COPY_SAVER_RENDER_UI"] == "1"))
+func websitePreviewLoadsAutomaticallyWhenDetailAppears() async throws {
+    _ = NSApplication.shared
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.history(HistoryItem(text: "https://example.com/synthetic", firstSeenAt: date, lastSeenAt: date)))
+    let model = DesktopModel(service: RenderVault([record]), clipboard: nil, automaticallyOpensVault: true, websitePreviewLoader: RenderWebsiteLoader())
+    model.start(); await model.finishPendingOperations(); model.selectRecord(record.id)
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 680), styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = NSHostingView(rootView: LibraryView(model: model).environment(\.copySaverWindowIsKey, true))
+    defer { window.close(); model.cancelWebsitePreview() }
+    window.contentView?.layoutSubtreeIfNeeded()
+    for _ in 0..<100 {
+        if case .loaded = model.websitePreviewState { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    guard case .loaded(let metadata) = model.websitePreviewState else { Issue.record("Appearance did not start automatic loading"); return }
+    #expect(metadata.title == "Synthetic website title")
+    model.lock(); await model.finishPendingOperations()
+    #expect(model.websitePreviewState == .idle)
 }

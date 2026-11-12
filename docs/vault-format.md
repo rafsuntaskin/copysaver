@@ -66,3 +66,7 @@ Capture admission is separate from vault authentication. The domain gate require
 ## Limits of current verification
 
 The core suite checks synthetic canaries in database/WAL/SHM files before and after checkpointing, exact UTF-8 text preservation, limits, nonce diversity, an independent format fixture, errors/rollback, persisted corruption, and delayed/cancelled session work. It does not establish signed Keychain isolation, safe OS clipboard integration, UI masking, widget snapshots, app crash diagnostics, recovery/export, or release readiness. Those checks remain separate in [spec.md](../spec.md#12-verification-and-acceptance-criteria).
+
+## Optional website-preview preference (November 12, 2026)
+
+Settings payloads add `websitePreviewsEnabled`. Missing values decode as true under the explicitly selected automatic-preview policy; an explicit false round-trips and survives unrelated settings changes. The field stays inside the encrypted record. Database/envelope/settings versions remain 1; older clients ignore the unknown field, so downgrading and rewriting settings may discard the disabled choice. Remote metadata and image bytes are never persisted in this format.

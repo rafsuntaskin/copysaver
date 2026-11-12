@@ -81,3 +81,16 @@ func invalidNamesAreRejected(name: String) {
         try Snippet(name: "Category limit", body: "test", category: String(repeating: "b", count: 61), createdAt: instant, updatedAt: instant)
     }
 }
+
+@Test func websitePreviewPreferencePreservesLegacySettingsAndDisabledChoice() throws {
+    let settings = try VaultSettings(websitePreviewsEnabled: false)
+    let record = try VaultRecord(.settings(settings))
+    let encoded = try RecordCodec.encode(record)
+    #expect(try RecordCodec.decode(encoded) == record)
+    #expect(try settings.updating(captureEnabled: true).websitePreviewsEnabled == false)
+    let json = try #require(String(data: encoded, encoding: .utf8))
+    let legacy = json.replacingOccurrences(of: ",\"websitePreviewsEnabled\":false", with: "")
+    guard case .settings(let restored) = try RecordCodec.decode(Data(legacy.utf8)).payload else { Issue.record("Missing legacy settings"); return }
+    #expect(restored.websitePreviewsEnabled)
+    #expect(restored.id == settings.id)
+}

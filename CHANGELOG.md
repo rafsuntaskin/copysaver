@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 (7) · local development preview · November 12, 2026
+
+- Load real website titles, descriptions and thumbnails automatically for the selected non-sensitive HTTPS link.
+- Add an encrypted preview-disable preference in Privacy & Storage, bounded memory-only networking, cancellation guards and retry states.
+- Keep sensitive snippets out of network requests and preserve exact text copying.
+
 ## 0.1.3 (6) · local development preview · November 12, 2026
 
 - Adopt the approved graphite, cobalt and silver Layered C app icon.

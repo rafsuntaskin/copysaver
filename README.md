@@ -7,7 +7,7 @@ A macOS-first, open source clipboard history and named-snippet utility designed 
 ## v0.1 scope
 
 - Searchable plain-text clipboard history with pinning and automatic retention.
-- Offline previews for web links, email, phone numbers, JSON and code, with exact original-text copying.
+- Automatic website title/description/image previews, plus local email, phone, JSON and code views; exact original-text copying.
 - Named snippets for addresses, signatures, and other reusable text.
 - Sensitive snippets with hidden previews, explicit reveal, and private clipboard expiry.
 - A full native library and a Spotlight-style Focus panel with a configurable global shortcut.
@@ -18,7 +18,7 @@ The selected stack is Swift 6, SwiftUI, AppKit, CryptoKit, Security/LocalAuthent
 
 ## Privacy design
 
-The MVP works without an account, server, telemetry, or app networking. New community libraries capture automatically after OS clipboard approval, reopen after sleep, and respect saved Pause/Disable choices. Hide and pause clears the interface and stops capture until explicit reopening; it is not an authentication lock. Sensitive snippets conceal previews/search bodies and require no additional authentication in the open community library. Copying deliberately puts plaintext on the system clipboard. Content previews never fetch website metadata, images or favicons; Open in browser is an explicit user action.
+Core capture, search, copy and storage work offline, without an account, server or telemetry. New community libraries capture automatically after OS clipboard approval, reopen after sleep, and respect saved Pause/Disable choices. Hide and pause clears the interface and stops capture until explicit reopening; it is not an authentication lock. Sensitive snippets conceal previews/search bodies and require no additional authentication in the open community library. Copying deliberately puts plaintext on the system clipboard. The selected non-sensitive website link automatically loads metadata and an image, exposing your IP and URL to that site/image host. Disable this in Settings → Privacy & Storage. Sensitive snippets are never fetched; preview data stays in memory. Open in browser remains explicit.
 
 Community vault keys use the default login Keychain's calling-app ACL. Copied database files alone cannot reveal the contents; a compromised unlocked account or decryptable Keychain is outside this protection. No app-exclusivity or device-only guarantee is claimed for this profile. Portable backup/recovery is not included in v0.1, so keep another copy of important information. See [community installation/privacy notes](docs/COMMUNITY.txt) and [spec section 7](spec.md#7-security-model).
 

@@ -14,6 +14,7 @@ Read [spec.md](spec.md), its delivery checklist and progress log, [CONTRIBUTING.
 - The WidgetKit extension is a launcher with generic labels. It must not access clipboard content, the vault, or its Keychain key, or expose saved content through snapshots or URLs.
 - Separate domain policies, persistence/crypto, clipboard integration, platform adapters, and UI. Use actors and session generations to prevent work from crossing a lock boundary.
 - Prefer OS frameworks and zero third-party runtime dependencies initially. Explain a concrete need, license implications, and maintenance cost before adding a dependency.
+- Website previews are explicitly authorized for the selected non-sensitive link, enabled by default with an encrypted off toggle. Fetch bounded metadata/one resized image through ephemeral HTTP, never web views/scripts/cookies/persistent caches. Cancel and reject late results on session/presentation changes. Only the parent app has outgoing network permission; widget/probes have none.
 - Keep Windows, rich clipboard formats, sync, and encrypted export/import outside v0.1 unless the user changes scope. Record material requirement changes in the spec in the same change.
 
 ## Security requirements

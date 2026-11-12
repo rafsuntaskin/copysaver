@@ -157,6 +157,11 @@ struct LibraryPrivacySection: View {
             if model.automaticallyOpensVault {
                 Text("Sensitive snippets hide their text in previews and search. Choose Show text or Edit snippet when you need the body.").foregroundStyle(.secondary)
             }
+            if model.settings != nil {
+                Toggle("Load website previews automatically", isOn: Binding(get: { model.websitePreviewsEnabled }, set: { model.setWebsitePreviewsEnabled($0) }))
+                    .disabled(model.isBusy || model.isPreview)
+                Text("The selected non-sensitive link contacts its website and image host to load a title, description and image. These sites receive your IP and requested URL. Sensitive snippets are never fetched. Preview data stays in memory.").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
             Text("Portable encrypted backup is not available yet. Keep another copy of important information.").foregroundStyle(.secondary)
         }.fixedSize(horizontal: false, vertical: true)
     }

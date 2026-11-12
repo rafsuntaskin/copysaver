@@ -6,6 +6,7 @@ struct LibraryView: View {
     @Bindable var model: DesktopModel
     /// Nil discovers installed apps; render fixtures inject a synthetic list.
     var applicationSuggestions: [(id: String, name: String)]? = nil
+    @Environment(\.copySaverWindowIsKey) private var windowIsKey
     @FocusState private var searchFocused: Bool
     @FocusState private var focusLauncherFocused: Bool
 
@@ -221,7 +222,11 @@ struct LibraryView: View {
                             .padding(20).background(Color(nsColor: .windowBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
                     }
                 } else {
-                    ContentPreviewView(preview: model.preview(for: record), original: record.content, canOpenLink: !model.isPreview && !model.isBusy) { text, _ in
+                    ContentPreviewView(preview: model.preview(for: record), original: record.content, canOpenLink: !model.isPreview && !model.isBusy,
+                                       websiteState: model.websitePreviewState, websitePreviewsEnabled: model.websitePreviewsEnabled,
+                                       automaticPreviewActive: windowIsKey && model.presentationActive && !model.isFocusPresented,
+                                       loadWebsitePreview: { if model.selectedID == record.id { model.loadWebsitePreview() } }, cancelWebsitePreview: { model.cancelWebsitePreview(for: record.id) },
+                                       retryWebsitePreview: { if model.selectedID == record.id { model.loadWebsitePreview(retry: true) } }) { text, _ in
                         model.copySelection(selectedText: text)
                     }.id(record.id)
                 }

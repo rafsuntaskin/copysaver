@@ -39,7 +39,7 @@ Use the shared search field at a larger type size, compact single-line result ti
 
 ## Craft and verification
 
-Use live SwiftUI text, controls, lists, and SF Symbols for the approved visual ingredients; the mock PNGs are references only. The user-approved Layered C app icon is the only custom raster brand asset; content previews use native text and SF Symbols. Use short state transitions, respect reduced motion, and inspect the running native app at normal and compact sizes in light/dark appearance. Record pending checks rather than treating compilation or a generated screenshot as UX, accessibility, or security validation.
+Use live SwiftUI text, controls, lists, and SF Symbols for the approved visual ingredients; the mock PNGs are references only. The user-approved Layered C app icon is the only custom raster brand asset; content previews use native text/SF Symbols and, for nonsensitive website links, a fetched thumbnail kept only in memory. Use short state transitions, respect reduced motion, and inspect the running native app at normal and compact sizes in light/dark appearance. Record pending checks rather than treating compilation or a generated screenshot as UX, accessibility, or security validation.
 
 ## Launcher widget
 
@@ -49,6 +49,6 @@ The approved generic launcher requirement is carried into native WidgetKit: smal
 
 Use the approved Layered C: graphite tile, cobalt outer C and silver inner C, subtly offset like saved copies. Source and native packaging notes are in designs/icons/README.md. The icon is bundled for Finder/Dock and used in the Library header; navigation and menu bar retain semantic template symbols.
 
-## Local text previews
+## Content previews
 
-Content type is a quiet aid to retrieval. Share type symbols and compact summaries in Library and Focus, retain snippet names, and keep full details in Library. A link uses one restrained native preview surface showing its actual host/path and an explicit browser action, with original text below. Contact previews use the same spacing. JSON and code offer a compact preview/original switch; no rich text, remote images, animations or embedded web views. Sensitive bodies never enter classification, even when explicitly revealed. All text copies route through the existing policy editor/output path.
+Content type is a quiet aid to retrieval. Share type symbols and compact summaries in Library and Focus, retain snippet names, and keep full details in Library. A link uses one restrained preview surface with a bounded thumbnail, page title/description, actual host and explicit browser action; original saved text stays below. Load automatically only for the selected non-sensitive link in the active Library, with quiet loading and retry states and an encrypted off toggle. Contact previews use the same spacing. JSON and code offer a compact preview/original switch; no rich-text clipboard payload, decorative animation or embedded web view. Sensitive bodies never enter classification, even when explicitly revealed. All text copies route through the existing policy editor/output path.

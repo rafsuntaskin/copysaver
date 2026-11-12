@@ -26,11 +26,13 @@ for source in ["App/CopySaverMain.swift", "Widget/CopySaverWidgetMain.swift", "T
 for folder, entitlement in [("App", "CopySaver.entitlements"), ("Widget", "CopySaverWidget.entitlements"),
                             ("TestsSupport/KeychainProbe", "CopySaverKeychainProbe.entitlements")]:
     expected_entitlements = {"com.apple.security.app-sandbox": True}
+    if folder == "App":
+        expected_entitlements["com.apple.security.network.client"] = True
     if folder != "Widget":
         expected_entitlements["keychain-access-groups"] = ["$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)"]
     assert plistlib.loads((root / folder / entitlement).read_bytes()) == expected_entitlements
     plistlib.loads((root / folder / "Info.plist").read_bytes())
-assert plistlib.loads((root / "App/CopySaverPreview.entitlements").read_bytes()) == {"com.apple.security.app-sandbox": True}
+assert plistlib.loads((root / "App/CopySaverPreview.entitlements").read_bytes()) == {"com.apple.security.app-sandbox": True, "com.apple.security.network.client": True}
 assert "--entitlements App/CopySaverPreview.entitlements" in (root / "scripts/build-app.sh").read_text()
 
 app_info = plistlib.loads((root / "App/Info.plist").read_bytes())

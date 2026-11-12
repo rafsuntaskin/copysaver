@@ -723,3 +723,104 @@ func nearBudgetVaultBenchmark() async throws {
         #expect(clipboard.lastText?.utf8.elementsEqual(text.utf8) == true)
     }
 }
+
+private actor SyntheticWebsiteLoader: WebsitePreviewLoading {
+    let gate: TestGate?
+    var calls = 0
+    let fails: Bool
+    init(gate: TestGate? = nil, fails: Bool = false) { self.gate = gate; self.fails = fails }
+    func load(_ url: URL) async throws -> WebsitePreview {
+        calls += 1
+        await gate?.wait()
+        if fails { throw WebsitePreviewFailure.unavailable }
+        // Deliberately ignore cancellation to exercise the model's generation guard.
+        return WebsitePreview(title: "Synthetic website", summary: "Synthetic description", image: nil, host: "example.com")
+    }
+}
+
+@MainActor @Test func websitePreviewLoadsOnlyForAnOpenNonsensitiveSelection() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let ordinary = try VaultRecord(.snippet(Snippet(name: "A", body: "https://example.com/page", createdAt: date, updatedAt: date)))
+    let sensitive = try VaultRecord(.snippet(Snippet(name: "B", body: "https://example.com/private", isSensitive: true, createdAt: date, updatedAt: date)))
+    let loader = SyntheticWebsiteLoader()
+    let model = DesktopModel(service: TestVault(records: [ordinary, sensitive]), clipboard: TestClipboard(), automaticallyOpensVault: true, websitePreviewLoader: loader)
+    model.start(); await model.finishPendingOperations(); model.navigate(to: .snippets); model.selectRecord(ordinary.id)
+    let task = try #require(model.loadWebsitePreview()); await task.value
+    guard case .loaded(let result) = model.websitePreviewState else { Issue.record("Preview missing"); return }
+    #expect(result.title == "Synthetic website")
+    #expect(await loader.calls == 1)
+    #expect(model.loadWebsitePreview() == nil)
+    model.copySelection(); await model.finishPendingOperations()
+    guard case .loaded = model.websitePreviewState else { Issue.record("Copy metadata refresh discarded website preview"); return }
+    model.selectRecord(sensitive.id)
+    #expect(model.websitePreviewState == .idle && model.loadWebsitePreview() == nil)
+    model.revealSelection(); await model.finishPendingOperations()
+    #expect(model.loadWebsitePreview() == nil)
+    model.lock(); await model.finishPendingOperations()
+    #expect(model.websitePreviewState == .idle && model.loadWebsitePreview() == nil)
+    #expect(await loader.calls == 1)
+}
+
+@MainActor @Test func websitePreviewRejectsLateResultsAfterSelectionLockAndDeactivation() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    for boundary in ["selection", "lock", "deactivation"] {
+        let first = try VaultRecord(.history(HistoryItem(text: "https://example.com/first", firstSeenAt: date, lastSeenAt: date)))
+        let second = try VaultRecord(.history(HistoryItem(text: "https://example.com/second", firstSeenAt: date, lastSeenAt: date)))
+        let gate = TestGate()
+        let loader = SyntheticWebsiteLoader(gate: gate)
+        let model = DesktopModel(service: TestVault(records: [first, second]), clipboard: nil, automaticallyOpensVault: true, websitePreviewLoader: loader)
+        model.start(); await model.finishPendingOperations(); model.selectRecord(first.id)
+        let pending = try #require(model.loadWebsitePreview())
+        try await gate.waitUntilRequested()
+        if boundary == "selection" { model.selectRecord(second.id) }
+        else if boundary == "lock" { model.lock(); await model.finishPendingOperations() }
+        else { model.setPresentationActive(false) }
+        await gate.release(); await pending.value
+        #expect(model.websitePreviewState == .idle)
+    }
+}
+
+@MainActor @Test func websitePreviewPreferenceDisablesRequestsAndSurvivesReopen() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.history(HistoryItem(text: "https://example.com/page", firstSeenAt: date, lastSeenAt: date)))
+    let settings = try VaultRecord(.settings(VaultSettings(captureEnabled: true)))
+    let loader = SyntheticWebsiteLoader()
+    let model = DesktopModel(service: TestVault(records: [record, settings]), clipboard: nil, automaticallyOpensVault: true, websitePreviewLoader: loader)
+    model.start(); await model.finishPendingOperations(); model.selectRecord(record.id)
+    model.setWebsitePreviewsEnabled(false); await model.finishPendingOperations()
+    #expect(!model.websitePreviewsEnabled && model.loadWebsitePreview() == nil)
+    #expect(model.settings?.captureEnabled == true)
+    model.lock(); await model.finishPendingOperations(); await model.unlock()?.value
+    #expect(!model.websitePreviewsEnabled)
+    #expect(await loader.calls == 0)
+}
+
+@MainActor @Test func websitePreviewClearsAfterContentAndSensitivityEdits() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.snippet(Snippet(name: "Synthetic", body: "https://example.com/page", createdAt: date, updatedAt: date)))
+    let model = DesktopModel(service: TestVault(records: [record]), clipboard: nil, automaticallyOpensVault: true, websitePreviewLoader: SyntheticWebsiteLoader())
+    model.start(); await model.finishPendingOperations(); model.navigate(to: .snippets); model.selectRecord(record.id)
+    await model.loadWebsitePreview()?.value
+    model.editSelection(); await model.finishPendingOperations(); model.draftBody = "https://example.com/changed"
+    model.saveDraft(); await model.finishPendingOperations()
+    #expect(model.websitePreviewState == .idle)
+    await model.loadWebsitePreview()?.value
+    model.editSelection(); await model.finishPendingOperations(); model.draftSensitive = true
+    model.saveDraft(); await model.finishPendingOperations()
+    #expect(model.websitePreviewState == .idle && model.loadWebsitePreview() == nil)
+}
+
+@MainActor @Test func websitePreviewFailureWaitsForExplicitRetry() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.history(HistoryItem(text: "https://example.com/page", firstSeenAt: date, lastSeenAt: date)))
+    let loader = SyntheticWebsiteLoader(fails: true)
+    let model = DesktopModel(service: TestVault(records: [record]), clipboard: nil, automaticallyOpensVault: true, websitePreviewLoader: loader)
+    model.start(); await model.finishPendingOperations(); model.selectRecord(record.id)
+    await model.loadWebsitePreview()?.value
+    #expect(model.websitePreviewState == .unavailable)
+    #expect(model.loadWebsitePreview() == nil)
+    #expect(await loader.calls == 1)
+    await model.loadWebsitePreview(retry: true)?.value
+    #expect(model.websitePreviewState == .unavailable)
+    #expect(await loader.calls == 2)
+}

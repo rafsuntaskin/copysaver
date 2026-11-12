@@ -34,7 +34,9 @@ for bundle, executable in [(app, info["CFBundleExecutable"]), (widget, widget_in
     require("Signature=adhoc" in signature and re.search(r"flags=0x[0-9a-fA-F]+\([^)]*\bruntime\b", signature), "Ad-hoc hardened runtime required.")
     require("Authority=" not in signature and "TeamIdentifier=not set" in signature, "Apple-issued signing authority must not be used.")
     entitlements = subprocess.run(["codesign", "-d", "--entitlements", ":-", str(bundle)], capture_output=True, check=True).stdout
-    require(plistlib.loads(entitlements) == {"com.apple.security.app-sandbox": True}, "Only the App Sandbox entitlement is allowed.")
+    expected = {"com.apple.security.app-sandbox": True}
+    if bundle == app: expected["com.apple.security.network.client"] = True
+    require(plistlib.loads(entitlements) == expected, "Only sandbox and parent-app outgoing preview access are allowed.")
     architectures = subprocess.check_output(["/usr/bin/lipo", "-archs", str(bundle / "Contents/MacOS" / executable)], text=True).split()
     require(set(architectures) == {"arm64", "x86_64"}, "Both Apple silicon and Intel slices required.")
 subprocess.run(["codesign", "--verify", "--strict", "--deep", str(app)], check=True)

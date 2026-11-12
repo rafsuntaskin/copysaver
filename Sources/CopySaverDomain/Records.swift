@@ -91,12 +91,14 @@ public struct VaultSettings: Codable, Equatable, Sendable, Identifiable {
     public let retentionDays: Int
     public let excludedBundleIDs: Set<String>
     public let idleLockTimeout: IdleLockTimeout
+    public let websitePreviewsEnabled: Bool
     public let settingsVersion: Int
 
     public init(
         id: UUID = UUID(), captureEnabled: Bool = false, manuallyPaused: Bool = false,
         historyCountLimit: Int = 1_000, retentionDays: Int = 30,
-        excludedBundleIDs: Set<String> = [], idleLockTimeout: IdleLockTimeout = .fifteenMinutes
+        excludedBundleIDs: Set<String> = [], idleLockTimeout: IdleLockTimeout = .fifteenMinutes,
+        websitePreviewsEnabled: Bool = true
     ) throws {
         self.id = id
         self.captureEnabled = captureEnabled
@@ -105,7 +107,27 @@ public struct VaultSettings: Codable, Equatable, Sendable, Identifiable {
         self.retentionDays = retentionDays
         self.excludedBundleIDs = excludedBundleIDs
         self.idleLockTimeout = idleLockTimeout
+        self.websitePreviewsEnabled = websitePreviewsEnabled
         self.settingsVersion = 1
+        try validate()
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, captureEnabled, manuallyPaused, historyCountLimit, retentionDays
+        case excludedBundleIDs, idleLockTimeout, websitePreviewsEnabled, settingsVersion
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        captureEnabled = try values.decode(Bool.self, forKey: .captureEnabled)
+        manuallyPaused = try values.decode(Bool.self, forKey: .manuallyPaused)
+        historyCountLimit = try values.decode(Int.self, forKey: .historyCountLimit)
+        retentionDays = try values.decode(Int.self, forKey: .retentionDays)
+        excludedBundleIDs = try values.decode(Set<String>.self, forKey: .excludedBundleIDs)
+        idleLockTimeout = try values.decode(IdleLockTimeout.self, forKey: .idleLockTimeout)
+        websitePreviewsEnabled = try values.decodeIfPresent(Bool.self, forKey: .websitePreviewsEnabled) ?? true
+        settingsVersion = try values.decode(Int.self, forKey: .settingsVersion)
         try validate()
     }
 
