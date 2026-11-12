@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2 (5) · local development preview · November 11, 2026
+
+- Clear the Focus mode launcher’s stored focus when opening or closing the panel.
+- Draw sidebar keyboard outlines only in the actual key window, preserving keyboard focus feedback and navigation selection.
+
 ## 0.1.1 (4) · local development preview · November 11, 2026
 
 - Bump the app and launcher widget together so this installer is distinguishable from the earlier 0.1.0 previews.

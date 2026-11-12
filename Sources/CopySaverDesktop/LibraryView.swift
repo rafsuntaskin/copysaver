@@ -7,6 +7,7 @@ struct LibraryView: View {
     /// Nil discovers installed apps; render fixtures inject a synthetic list.
     var applicationSuggestions: [(id: String, name: String)]? = nil
     @FocusState private var searchFocused: Bool
+    @FocusState private var focusLauncherFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
@@ -19,7 +20,8 @@ struct LibraryView: View {
                         Picker("Library", selection: $model.section) {
                             ForEach(LibrarySection.allCases) { Text($0.rawValue).tag($0) }
                         }.labelsHidden().accessibilityLabel("Library section")
-                        Button { model.onOpenFocus?() } label: { Image(systemName: "magnifyingglass") }.help("Open Focus mode")
+                        Button(action: openFocusMode) { Image(systemName: "magnifyingglass") }
+                            .focused($focusLauncherFocused).help("Open Focus mode")
                         Button { model.lock() } label: { Image(systemName: model.lockActionSymbol) }.help(model.lockActionTitle)
                     }.padding(.horizontal, 18).padding(.top, 40).padding(.bottom, 12)
                     Divider()
@@ -34,6 +36,14 @@ struct LibraryView: View {
         .frame(minWidth: 480, minHeight: 540)
         .onChange(of: model.libraryQuery) { _, query in model.ensureSelection(query: query) }
         .onChange(of: model.section) { _, _ in model.ensureSelection(query: model.libraryQuery); model.compactShowDetail = false }
+        .onChange(of: model.isFocusPresented) { _, _ in focusLauncherFocused = false }
+    }
+
+    private func openFocusMode() {
+        // This action transfers focus to another window, rather than selecting a
+        // Library destination. Do not restore the launcher's clicked focus on return.
+        focusLauncherFocused = false
+        model.onOpenFocus?()
     }
 
     private var wideLayout: some View {
@@ -86,9 +96,10 @@ struct LibraryView: View {
                         .accessibilityLabel(model.settings?.manuallyPaused == true ? "Resume capture" : "Pause capture")
                 }
             }.padding(.horizontal, 12).padding(.bottom, 12)
-            Button { model.onOpenFocus?() } label: {
+            Button(action: openFocusMode) {
                 SidebarRowLabel(title: "Focus mode", symbol: "magnifyingglass", shortcut: model.shortcutDescription)
-            }.buttonStyle(SidebarButtonStyle()).help("Open Focus mode: \(model.shortcutDescription)")
+            }.buttonStyle(SidebarButtonStyle()).focused($focusLauncherFocused).focusEffectDisabled()
+                .help("Open Focus mode: \(model.shortcutDescription)")
             Button { model.navigate(to: .settings) } label: {
                 SidebarRowLabel(title: "Settings", symbol: "gearshape")
             }.buttonStyle(SidebarButtonStyle(selected: model.phase == .unlocked && model.section == .settings)).disabled(model.phase != .unlocked)

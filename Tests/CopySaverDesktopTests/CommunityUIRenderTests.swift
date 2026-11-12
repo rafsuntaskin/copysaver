@@ -74,7 +74,36 @@ func renderCommunityUIFixtures() async throws {
     print("Synthetic offscreen UI fixtures rendered under .build/ui-review.")
 }
 
-@MainActor private func render<Content: View>(_ content: Content, scheme: ColorScheme, size: NSSize, to url: URL) throws {
+/// A stale focused launcher in an active background window must look unfocused;
+/// a keyboard-focused control in the key window must retain its outline.
+@MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["COPY_SAVER_RENDER_UI"] == "1"))
+func sidebarFocusOutlineFollowsKeyWindow() throws {
+    let directory = URL(filePath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/ui-review")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    for scheme in [ColorScheme.light, .dark] {
+        let name = scheme == .light ? "light" : "dark"
+        func snapshot(focused: Bool, keyWindow: Bool, selected: Bool = false, suffix: String) throws -> Data {
+            try render(SidebarRowSurface(selected: selected, focused: focused)
+                .environment(\.copySaverWindowIsKey, keyWindow).padding(4).background(Color(nsColor: .windowBackgroundColor)),
+                scheme: scheme, size: NSSize(width: 240, height: 44), to: directory.appendingPathComponent("focus-outline-\(name)-\(suffix).png"))
+        }
+        let normal = try snapshot(focused: false, keyWindow: false, suffix: "normal")
+        let background = try snapshot(focused: true, keyWindow: false, suffix: "background")
+        let keyboard = try snapshot(focused: true, keyWindow: true, suffix: "keyboard")
+        let backgroundMatchesUnfocused = background == normal
+        let keyboardOutlineVisible = keyboard != normal
+        #expect(backgroundMatchesUnfocused)
+        #expect(keyboardOutlineVisible)
+        let selected = try snapshot(focused: false, keyWindow: false, selected: true, suffix: "selected")
+        let selectedBackground = try snapshot(focused: true, keyWindow: false, selected: true, suffix: "selected-background")
+        let backgroundKeepsSelection = selectedBackground == selected
+        let selectionVisible = selected != normal
+        #expect(backgroundKeepsSelection)
+        #expect(selectionVisible)
+    }
+}
+
+@discardableResult @MainActor private func render<Content: View>(_ content: Content, scheme: ColorScheme, size: NSSize, to url: URL) throws -> Data {
     _ = NSApplication.shared
     let hosting = NSHostingView(rootView: content.environment(\.colorScheme, scheme))
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -89,6 +118,56 @@ func renderCommunityUIFixtures() async throws {
     hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
     let data = try #require(bitmap.representation(using: .png, properties: [:]))
     try data.write(to: url, options: .atomic)
+    return data
+}
+
+@MainActor private final class FixtureKeyWindow: NSWindow {
+    var fixtureIsKey = false
+    override var isKeyWindow: Bool { fixtureIsKey }
+}
+
+/// Hidden, synthetic windows exercise notification scoping and view reuse without
+/// activating the test process or opening the user's application.
+@MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["COPY_SAVER_RENDER_UI"] == "1"))
+func windowKeyObserverFollowsOnlyItsHostingWindow() async {
+    _ = NSApplication.shared
+    let first = FixtureKeyWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+    let second = FixtureKeyWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+    first.isReleasedWhenClosed = false; second.isReleasedWhenClosed = false
+    let observer = WindowKeyObservationView(frame: .zero)
+    defer { observer.stopObserving(); first.close(); second.close() }
+    var states: [Bool] = []
+    observer.onKeyChange = { states.append($0) }
+    first.contentView = observer
+    await observer.finishPendingUpdate()
+    #expect(states.last == false)
+    first.fixtureIsKey = true
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: first)
+    await observer.finishPendingUpdate()
+    #expect(states.last == true)
+    let count = states.count
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: second)
+    await observer.finishPendingUpdate()
+    #expect(states.count == count)
+    second.fixtureIsKey = true
+    second.contentView = observer
+    await observer.finishPendingUpdate()
+    #expect(states.last == true)
+    let movedCount = states.count
+    first.fixtureIsKey = false
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: first)
+    await observer.finishPendingUpdate()
+    #expect(states.count == movedCount)
+    second.fixtureIsKey = false
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: second)
+    await observer.finishPendingUpdate()
+    #expect(states.last == false)
+    observer.stopObserving()
+    let stoppedCount = states.count
+    second.fixtureIsKey = true
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: second)
+    await observer.finishPendingUpdate()
+    #expect(states.count == stoppedCount)
 }
 
 private struct SidebarStatesFixture: View {
@@ -100,7 +179,7 @@ private struct SidebarStatesFixture: View {
             row("Pressed", SidebarRowSurface(hovered: true, pressed: true))
             row("Selected", SidebarRowSurface(selected: true))
             row("Selected + hover", SidebarRowSurface(selected: true, hovered: true))
-            row("Keyboard focus", SidebarRowSurface(focused: true))
+            row("Keyboard focus", SidebarRowSurface(focused: true)).environment(\.copySaverWindowIsKey, true)
             row("Increased contrast", SidebarRowSurface(selected: true, increasedContrast: true))
         }.padding(20).background(Color(nsColor: .windowBackgroundColor))
     }

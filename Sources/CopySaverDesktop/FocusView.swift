@@ -164,8 +164,13 @@ struct LibraryPrivacySection: View {
 
 struct AppearanceRoot<Content: View>: View {
     @AppStorage("appearance") private var appearance = "system"
+    @State private var windowIsKey = false
     let content: Content
-    var body: some View { content.preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil) }
+    var body: some View {
+        content.preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+            .environment(\.copySaverWindowIsKey, windowIsKey)
+            .background { WindowKeyObserver(isKey: $windowIsKey).frame(width: 0, height: 0) }
+    }
 }
 
 private struct HistorySettingsView: View {
