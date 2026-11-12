@@ -39,8 +39,12 @@ Use the shared search field at a larger type size, compact single-line result ti
 
 ## Craft and verification
 
-Use live SwiftUI text, controls, lists, and SF Symbols for the approved visual ingredients; the mock PNGs are references only. No additional raster assets are needed for this utility. Use short state transitions, respect reduced motion, and inspect the running native app at normal and compact sizes in light/dark appearance. Record pending checks rather than treating compilation or a generated screenshot as UX, accessibility, or security validation.
+Use live SwiftUI text, controls, lists, and SF Symbols for the approved visual ingredients; the mock PNGs are references only. The user-approved Layered C app icon is the only custom raster brand asset; content previews use native text and SF Symbols. Use short state transitions, respect reduced motion, and inspect the running native app at normal and compact sizes in light/dark appearance. Record pending checks rather than treating compilation or a generated screenshot as UX, accessibility, or security validation.
 
 ## Launcher widget
 
 The approved generic launcher requirement is carried into native WidgetKit: small uses name/icon, a quiet Clipboard & snippets label, and Open Focus Mode; medium adds separate History/Snippets links. Use system widget margins, semantic foregrounds and SF Symbols. This is the same restrained utility direction, with no content thumbnails, status metrics, new imagery, or alternate visual theme. Actual system gallery rendering remains a native validation gate.
+
+## App icon
+
+Use the approved Layered C: graphite tile, cobalt outer C and silver inner C, subtly offset like saved copies. Source and native packaging notes are in designs/icons/README.md. The icon is bundled for Finder/Dock and used in the Library header; navigation and menu bar retain semantic template symbols.

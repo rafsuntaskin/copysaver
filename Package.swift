@@ -32,7 +32,7 @@ let package = Package(
         .testTarget(name: "CopySaverDomainTests", dependencies: ["CopySaverDomain"]),
         .target(name: "CopySaverPlatform", dependencies: ["CopySaverDomain", "CopySaverVault"]),
         .target(name: "CopySaverDesktop", dependencies: ["CopySaverDomain", "CopySaverVault", "CopySaverPlatform"]),
-        .executableTarget(name: "CopySaverDev", dependencies: ["CopySaverDesktop"], path: "App", exclude: ["Info.plist", "CopySaver.entitlements", "CopySaverPreview.entitlements"]),
+        .executableTarget(name: "CopySaverDev", dependencies: ["CopySaverDesktop"], path: "App", exclude: ["Info.plist", "CopySaver.entitlements", "CopySaverPreview.entitlements", "Resources"]),
         .testTarget(name: "CopySaverPlatformTests", dependencies: ["CopySaverPlatform", "CopySaverDomain", "CopySaverVault"]),
         .testTarget(name: "CopySaverDesktopTests", dependencies: ["CopySaverDesktop", "CopySaverDomain", "CopySaverPlatform", "CopySaverVault"]),
         .testTarget(

@@ -19,7 +19,8 @@ if [[ "$configuration" == release ]]; then
 fi
 ./scripts/swift.sh build "${build_options[@]}"
 bin_path="$(./scripts/swift.sh build "${build_options[@]}" --show-bin-path)"
-mkdir -p "$app_path/Contents/MacOS"
+mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources"
+install -m 644 App/Resources/AppIcon.icns "$app_path/Contents/Resources/AppIcon.icns"
 install -m 755 "$bin_path/CopySaverDev" "$app_path/Contents/MacOS/CopySaver"
 
 python3 - "$project_root/App/Info.plist" "$app_path/Contents/Info.plist" "$identifier" "$display_name" "$url_scheme" <<'PY'

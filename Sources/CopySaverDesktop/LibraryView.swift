@@ -67,8 +67,7 @@ struct LibraryView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
-                Image(systemName: "clipboard").font(.system(size: 18)).frame(width: 32, height: 32)
-                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+                AppIconView(size: 36)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("CopySaver").font(.system(size: 16, weight: .semibold))
                     Text("Clipboard & snippets").font(.system(size: 10)).foregroundStyle(.secondary)

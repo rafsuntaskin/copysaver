@@ -33,6 +33,11 @@ for folder, entitlement in [("App", "CopySaver.entitlements"), ("Widget", "CopyS
 assert plistlib.loads((root / "App/CopySaverPreview.entitlements").read_bytes()) == {"com.apple.security.app-sandbox": True}
 assert "--entitlements App/CopySaverPreview.entitlements" in (root / "scripts/build-app.sh").read_text()
 
+app_info = plistlib.loads((root / "App/Info.plist").read_bytes())
+assert app_info.get("CFBundleIconFile") == "AppIcon"
+assert (root / "App/Resources/AppIcon.icns").read_bytes()[:4] == b"icns"
+assert "AppIcon.icns" in (root / "scripts/build-app.sh").read_text()
+
 app_id = "E00000000000000000000001"
 widget_id = "E00000000000000000000002"
 for target_id in [app_id, widget_id]:
@@ -45,6 +50,9 @@ for target_id in [app_id, widget_id]:
         assert all(s["APPLICATION_EXTENSION_API_ONLY"] == "YES" and s["SKIP_INSTALL"] == "YES" for s in settings)
 assert any(objects[dep]["target"] == widget_id for dep in objects[app_id]["dependencies"])
 phases = [objects[p] for p in objects[app_id]["buildPhases"]]
+assert any(objects[objects[f]["fileRef"]].get("path") == "Resources/AppIcon.icns"
+           for p in phases if p["isa"] == "PBXResourcesBuildPhase" for f in p["files"])
+
 assert any(p["isa"] == "PBXCopyFilesBuildPhase" and p["dstSubfolderSpec"] == "13" for p in phases)
 probe_id = "E10000000000000000000001"
 probe = objects[probe_id]
