@@ -129,7 +129,7 @@ func sidebarFocusOutlineFollowsKeyWindow() throws {
 /// Hidden, synthetic windows exercise notification scoping and view reuse without
 /// activating the test process or opening the user's application.
 @MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["COPY_SAVER_RENDER_UI"] == "1"))
-func windowKeyObserverFollowsOnlyItsHostingWindow() async {
+func windowKeyObserverFollowsOnlyItsHostingWindow() async throws {
     _ = NSApplication.shared
     let first = FixtureKeyWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
     let second = FixtureKeyWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -168,6 +168,44 @@ func windowKeyObserverFollowsOnlyItsHostingWindow() async {
     NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: second)
     await observer.finishPendingUpdate()
     #expect(states.count == stoppedCount)
+
+    // Exercise the actual AppearanceRoot → representable → environment bridge,
+    // including its zero-sized background view, rather than only the adapter.
+    let bridgeWindow = FixtureKeyWindow(contentRect: NSRect(x: 0, y: 0, width: 240, height: 44), styleMask: [.borderless], backing: .buffered, defer: false)
+    bridgeWindow.isReleasedWhenClosed = false
+    bridgeWindow.fixtureIsKey = true
+    let hosting = NSHostingView(rootView: AppearanceRoot(content: SidebarRowSurface(focused: true)
+        .padding(4).background(Color(nsColor: .windowBackgroundColor))))
+    hosting.frame = NSRect(x: 0, y: 0, width: 240, height: 44)
+    bridgeWindow.contentView = hosting
+    defer { bridgeWindow.contentView = nil; bridgeWindow.close() }
+    hosting.layoutSubtreeIfNeeded()
+    func findObserver(_ view: NSView) -> WindowKeyObservationView? {
+        if let observer = view as? WindowKeyObservationView { return observer }
+        for child in view.subviews { if let found = findObserver(child) { return found } }
+        return nil
+    }
+    func pixels() throws -> Data {
+        hosting.layoutSubtreeIfNeeded()
+        let bitmap = try #require(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+        return try #require(bitmap.representation(using: .png, properties: [:]))
+    }
+    let bridge = try #require(findObserver(hosting))
+    await bridge.finishPendingUpdate()
+    let keyPixels = try pixels()
+    bridgeWindow.fixtureIsKey = false
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: bridgeWindow)
+    await bridge.finishPendingUpdate()
+    let backgroundPixels = try pixels()
+    let outlineCleared = keyPixels != backgroundPixels
+    #expect(outlineCleared)
+    bridgeWindow.fixtureIsKey = true
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: bridgeWindow)
+    await bridge.finishPendingUpdate()
+    let restoredPixels = try pixels()
+    let keyboardOutlineRestored = restoredPixels == keyPixels
+    #expect(keyboardOutlineRestored)
 }
 
 private struct SidebarStatesFixture: View {
