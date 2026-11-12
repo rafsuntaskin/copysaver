@@ -1,6 +1,6 @@
 import Foundation
 
-/// Ephemeral presentation only. Never persisted, fetched, executed, or used as copy output.
+/// Ephemeral presentation only. Never persisted, fetched, executed, or used as primary Copy output.
 public enum TextContentPreview: Equatable, Sendable {
     case text
     case webLink(WebLinkPreview)
