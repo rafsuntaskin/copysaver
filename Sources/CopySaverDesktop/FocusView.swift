@@ -36,7 +36,7 @@ struct FocusView: View {
                     ScrollView {
                         LazyVStack(spacing: 2) {
                             ForEach(visible) { record in
-                                RecordRow(record: record, selected: record.id == model.selectedID, compact: true) { model.selectRecord(record.id) }.id(record.id)
+                                RecordRow(record: record, preview: model.preview(for: record), selected: record.id == model.selectedID, compact: true) { model.selectRecord(record.id) }.id(record.id)
                             }
                         }.padding(.horizontal, 10).padding(.bottom, 8)
                     }

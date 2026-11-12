@@ -140,7 +140,7 @@ struct LibraryView: View {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(visible) { record in
-                            RecordRow(record: record, selected: record.id == model.selectedID) { model.selectRecord(record.id) }
+                            RecordRow(record: record, preview: model.preview(for: record), selected: record.id == model.selectedID) { model.selectRecord(record.id) }
                                 .id(record.id)
                                 .contextMenu {
                                     Button("Copy") { if model.selectRecord(record.id) { model.copySelection() } }.disabled(model.isPreview || model.isBusy)
@@ -179,7 +179,7 @@ struct LibraryView: View {
         } else if let record = model.selectedRecord {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 12) {
-                    Text(record.isSensitive ? "HIDDEN PREVIEW" : "PLAIN TEXT")
+                    Text(record.isSensitive ? "HIDDEN PREVIEW" : model.preview(for: record).label.uppercased())
                         .font(.system(size: 10, weight: .semibold)).tracking(0.7).foregroundStyle(.secondary)
                     Spacer()
                     if case .history(let item) = record.payload {
@@ -221,7 +221,7 @@ struct LibraryView: View {
                             .padding(20).background(Color(nsColor: .windowBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
                     }
                 } else {
-                    VaultTextEditor(text: .constant(record.content), editable: false, accessibilityName: "Saved text") { text, _ in
+                    ContentPreviewView(preview: model.preview(for: record), original: record.content, canOpenLink: !model.isPreview && !model.isBusy) { text, _ in
                         model.copySelection(selectedText: text)
                     }.id(record.id)
                 }
@@ -290,19 +290,25 @@ struct LibraryView: View {
 
 struct RecordRow: View {
     let record: VaultRecord
+    var preview: TextContentPreview = .text
     let selected: Bool
     var compact = false
     let select: () -> Void
 
+    private var rowTitle: String {
+        if case .history = record.payload { return preview.rowTitle ?? record.displayTitle }
+        return record.displayTitle
+    }
+
     var body: some View {
         Button(action: select) {
             HStack(alignment: .center, spacing: 11) {
-                Image(systemName: record.symbol).font(.system(size: 15)).frame(width: 32, height: 32).foregroundStyle(.secondary)
+                Image(systemName: record.isSensitive ? "eye.slash" : preview.symbol).font(.system(size: 15)).frame(width: 32, height: 32).foregroundStyle(.secondary)
                     .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(verbatim: record.displayTitle).font(.system(size: 13, weight: .medium)).lineLimit(compact ? 1 : 2).multilineTextAlignment(.leading)
+                    Text(verbatim: rowTitle).font(.system(size: 13, weight: .medium)).lineLimit(compact ? 1 : 2).multilineTextAlignment(.leading)
                     HStack(spacing: 5) {
-                        Text(verbatim: record.subtitle)
+                        Text(verbatim: record.isSensitive ? record.subtitle : preview.rowSummary ?? record.subtitle)
                         if case .history(let item) = record.payload { Text("·"); HistoryAgeLabel(date: item.lastSeenAt) }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }.frame(maxWidth: .infinity, alignment: .leading)

@@ -21,6 +21,7 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         didSet {
             sortedItems.removeAll()
             queryResults.removeAll()
+            contentPreviews.removeAll()
         }
     }
     public private(set) var isBusy = false
@@ -80,6 +81,20 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     // Every record replacement (including lock's empty array) releases these values.
     @ObservationIgnored private var sortedItems: [LibrarySection: [VaultRecord]] = [:]
     @ObservationIgnored private var queryResults: [LibrarySection: (query: String, records: [VaultRecord])] = [:]
+
+    @ObservationIgnored private var contentPreviews: [UUID: TextContentPreview] = [:]
+
+    func preview(for record: VaultRecord) -> TextContentPreview {
+        // Observe records even on cache hits; use the current record, never a stale
+        // view snapshot after an edit/delete. Sensitive bodies are not analyzed.
+        guard phase == .unlocked, let current = records.first(where: { $0.id == record.id }),
+              !current.isSensitive else { return .text }
+        if let cached = contentPreviews[current.id] { return cached }
+        let preview = TextContentPreview.classify(current.content)
+        if contentPreviews.count >= 128 { contentPreviews.removeAll() }
+        contentPreviews[current.id] = preview
+        return preview
+    }
 
     func finishPendingOperations() async {
         await operation?.value

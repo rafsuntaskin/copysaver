@@ -138,9 +138,11 @@ private enum GateFailure: Error { case noRequest }
     var copies = 0
     var clears = 0
     var shouldFail = false
+    var lastText: String?
     func copy(_ text: String, sensitive: Bool) throws {
         if shouldFail { throw ClipboardFailure.writeFailed }
         copies += 1
+        lastText = text
     }
     func clearOwnedSensitiveCopy() { clears += 1 }
     func clearExpiredCopy() {}
@@ -671,4 +673,53 @@ func nearBudgetVaultBenchmark() async throws {
     model.onConfirmDiscardDraft = { prompts += 1; return false }
     #expect(model.selectRecord(b.id))
     #expect(prompts == 0 && model.editingSnippet == nil)
+}
+
+@MainActor @Test func contentPreviewFollowsEditsSensitivityDeletionAndSession() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.snippet(Snippet(name: "Synthetic link", body: "https://example.com/private?token=synthetic", createdAt: date, updatedAt: date)))
+    let clipboard = TestClipboard()
+    let model = DesktopModel(service: TestVault(records: [record]), clipboard: clipboard, automaticallyOpensVault: true)
+    model.start(); await model.finishPendingOperations()
+    model.navigate(to: .snippets); model.selectRecord(record.id)
+    #expect(model.preview(for: record).label == "Link")
+    _ = model.preview(for: record) // Cache hit must still observe record replacement.
+    let changed = OSAllocatedUnfairLock(initialState: false)
+    withObservationTracking { _ = model.preview(for: record) } onChange: { changed.withLock { $0 = true } }
+    model.editSelection(); await model.finishPendingOperations()
+    model.draftBody = "  {\"value\":9007199254740993}\n"
+    model.saveDraft(); await model.finishPendingOperations()
+    #expect(changed.withLock { $0 })
+    #expect(model.preview(for: record).label == "JSON") // Stale view snapshot uses current body.
+    model.copySelection(); await model.finishPendingOperations()
+    #expect(clipboard.lastText == "  {\"value\":9007199254740993}\n")
+    model.editSelection(); await model.finishPendingOperations()
+    model.draftSensitive = true
+    model.saveDraft(); await model.finishPendingOperations()
+    #expect(model.preview(for: record) == .text)
+    #expect(model.items(query: "9007199254740993").isEmpty)
+    model.revealSelection(); await model.finishPendingOperations()
+    #expect(model.preview(for: record) == .text) // Reveal remains literal, never an analyzed preview.
+    model.lock(); await model.finishPendingOperations()
+    #expect(model.preview(for: record) == .text && model.selectedRecord == nil)
+    await model.unlock()?.value
+    model.navigate(to: .snippets); model.selectRecord(record.id)
+    #expect(model.preview(for: record) == .text)
+    model.deleteSelection(); await model.finishPendingOperations()
+    #expect(model.preview(for: record) == .text && model.items(query: "").isEmpty)
+}
+
+@MainActor @Test func contentPreviewNeverChangesExactCopyAcrossTypes() async throws {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let values = ["  https://example.com/a?token=synthetic#part\n", "hello@example.com", "+1 (202) 555-0100", "```swift\nlet café = 1\n```", "  {\"name\":\"日本語\",\"value\":1.2300e+03}  "]
+    for text in values {
+        let record = try VaultRecord(.history(HistoryItem(text: text, firstSeenAt: date, lastSeenAt: date)))
+        let clipboard = TestClipboard()
+        let model = DesktopModel(service: TestVault(records: [record]), clipboard: clipboard, automaticallyOpensVault: true)
+        model.start(); await model.finishPendingOperations()
+        #expect(model.preview(for: record) != .text)
+        model.selectRecord(record.id)
+        model.copySelection(); await model.finishPendingOperations()
+        #expect(clipboard.lastText?.utf8.elementsEqual(text.utf8) == true)
+    }
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 (6) · local development preview · November 12, 2026
+
+- Adopt the approved graphite, cobalt and silver Layered C app icon.
+- Recognize web links, email addresses, phone numbers, JSON and code in History and Snippets, with shared type cues in Focus.
+- Add offline link/contact previews and JSON/code preview/original views; keep the Copy button faithful to saved text.
+- Keep sensitive bodies concealed and unclassified, with no automatic network requests or storage migration.
+
 ## 0.1.2 (5) · local development preview · November 11, 2026
 
 - Clear the Focus mode launcher’s stored focus when opening or closing the panel.

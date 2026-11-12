@@ -26,6 +26,19 @@ func renderCommunityUIFixtures() async throws {
     let preview = DesktopModel(service: nil, clipboard: nil, preview: true, automaticallyOpensVault: true)
     var records = preview.records
     let long = try VaultRecord(.history(HistoryItem(text: "Synthetic long text\n" + String(repeating: "Exact café 日本語 text with whitespace.  \n", count: 600), firstSeenAt: Date(timeIntervalSince1970: 1_700_000_000), lastSeenAt: Date(timeIntervalSince1970: 1_700_000_000))))
+    var previewExamples: [String: VaultRecord] = [:]
+    let contentExamples = [
+        ("link", "https://example.com/docs/getting-started?source=synthetic"),
+        ("json", #"{"name":"Synthetic example","items":[1,2,3],"enabled":true}"#),
+        ("code", "```swift\nfunc example() -> String {\n    \"café 日本語\"\n}\n```"),
+        ("email", "hello@example.com"),
+        ("phone", "+1 (202) 555-0100"),
+    ]
+    for (name, text) in contentExamples {
+        let record = try VaultRecord(.history(HistoryItem(text: text, firstSeenAt: Date(timeIntervalSince1970: 1_700_000_000), lastSeenAt: Date(timeIntervalSince1970: 1_700_000_000))))
+        records.append(record)
+        previewExamples[name] = record
+    }
     records.append(long)
     records.append(try VaultRecord(.settings(VaultSettings(captureEnabled: true))))
     let vault = RenderVault(records)
@@ -38,6 +51,14 @@ func renderCommunityUIFixtures() async throws {
         let name = scheme == .light ? "light" : "dark"
         model.navigate(to: .history); model.ensureSelection(query: "")
         try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 1040, height: 680), to: directory.appendingPathComponent("library-\(name).png"))
+        for (kind, record) in previewExamples.sorted(by: { $0.key < $1.key }) {
+            model.selectRecord(record.id)
+            try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 1040, height: 680), to: directory.appendingPathComponent("preview-\(kind)-\(name).png"))
+            if kind == "link" || kind == "json" {
+                try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 480, height: 540), to: directory.appendingPathComponent("preview-\(kind)-minimum-\(name).png"))
+            }
+        }
+        model.compactShowDetail = false
         try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 620, height: 680), to: directory.appendingPathComponent("compact-list-\(name).png"))
         model.compactShowDetail = true
         try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 620, height: 680), to: directory.appendingPathComponent("compact-detail-\(name).png"))

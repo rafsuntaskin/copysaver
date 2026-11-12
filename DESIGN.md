@@ -48,3 +48,7 @@ The approved generic launcher requirement is carried into native WidgetKit: smal
 ## App icon
 
 Use the approved Layered C: graphite tile, cobalt outer C and silver inner C, subtly offset like saved copies. Source and native packaging notes are in designs/icons/README.md. The icon is bundled for Finder/Dock and used in the Library header; navigation and menu bar retain semantic template symbols.
+
+## Local text previews
+
+Content type is a quiet aid to retrieval. Share type symbols and compact summaries in Library and Focus, retain snippet names, and keep full details in Library. A link uses one restrained native preview surface showing its actual host/path and an explicit browser action, with original text below. Contact previews use the same spacing. JSON and code offer a compact preview/original switch; no rich text, remote images, animations or embedded web views. Sensitive bodies never enter classification, even when explicitly revealed. All text copies route through the existing policy editor/output path.
