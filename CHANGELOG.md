@@ -1,0 +1,9 @@
+# Changelog
+
+## 0.1.1 (4) · local development preview · November 11, 2026
+
+- Bump the app and launcher widget together so this installer is distinguishable from the earlier 0.1.0 previews.
+- Preserve the community bundle identity and encrypted storage format; no data migration is introduced.
+- Document retiring duplicate development builds while preserving their app archives, stored libraries and Keychain keys.
+
+This patch retains the UI and capture behavior of 0.1.0 build 3. Native release acceptance remains tracked in spec.md; this entry does not announce a tagged or notarized release.

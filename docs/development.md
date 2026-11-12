@@ -125,3 +125,11 @@ See [performance evidence](performance.md) for opt-in synthetic benchmarks. The 
 ## Community UI review
 
 `COPY_SAVER_RENDER_UI=1 ./scripts/swift.sh test --disable-xctest --filter renderCommunityUIFixtures` renders synthetic Library, Focus, sensitive detail/editor, settings, sidebar, empty-search, long-text and minimum-window PNGs under ignored `.build/ui-review/`. These are offscreen AppKit/SwiftUI views, not screenshots of a user app: the fixture does not activate windows, capture the screen, read Keychain, use the system clipboard or load actual user records. Light/dark rendering and state samples do not establish live keyboard/VoiceOver or animation behavior; those remain manual gates.
+
+## Duplicate local app entries
+
+Use `/Applications/CopySaver.app` for ordinary community use. Installing a new DMG means quitting CopySaver and replacing that same app, rather than keeping a second renamed copy. Development/test builds in `.build/` and Xcode DerivedData use separate identities and storage; macOS may list them as additional apps.
+
+To retire an obsolete build, first preserve a compressed recovery archive if needed, unregister only that exact `.app` path with the local `lsregister -u` command, then remove only that generated app bundle. Keep protected build archives if you may need to reopen the earlier protected library. Do not remove vault/container/Application Support data or Keychain entries, and do not reset the whole Launch Services database. A pinned old Dock shortcut may need to be removed manually. Future Xcode development builds can create separate entries again.
+
+The November 11 local cleanup archives are under ignored `.build/retired-apps/2026-11-11/`, with a manifest of original app locations. They contain app bundles only, not saved clipboard libraries or keys. Recover a retired bundle by extracting its archive to its original parent directory; its original profile and identity remain distinct from the community app.
