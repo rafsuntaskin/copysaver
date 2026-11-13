@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "version": "0.1.5",
+  "build": "8",
+  "channel": "beta",
+  "label": "Beta 1",
+  "tag": "v0.1.5-beta.1",
+  "repository": "rafsuntaskin/copysaver",
+  "minimum_macos": "14.0",
+  "architectures": ["arm64", "x86_64"]
+}

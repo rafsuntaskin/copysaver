@@ -1,4 +1,4 @@
-.PHONY: build test app preview check verify archive community-dmg
+.PHONY: build test app preview check verify archive community-dmg distribution
 
 build:
 	./scripts/swift.sh build
@@ -14,7 +14,8 @@ preview: app
 
 check:
 	python3 scripts/check-project.py
-	bash -n scripts/swift.sh scripts/build-app.sh scripts/verify-source.sh scripts/release.sh scripts/community-release.sh scripts/check-automatic-vault.sh
+	python3 scripts/community-distribution.py config
+	bash -n scripts/swift.sh scripts/build-app.sh scripts/verify-source.sh scripts/release.sh scripts/community-release.sh scripts/check-automatic-vault.sh scripts/draft-community-release.sh
 
 verify:
 	./scripts/verify-source.sh
@@ -24,3 +25,6 @@ archive:
 
 community-dmg:
 	./scripts/community-release.sh
+
+distribution:
+	python3 scripts/community-distribution.py prepare

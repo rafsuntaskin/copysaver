@@ -1,9 +1,16 @@
-CopySaver is a local clipboard history and named-snippet app.
+CopySaver privacy and recovery profiles
 
-Stored content is encrypted on your Mac. The key is device-bound in macOS Keychain. There is no portable backup or recovery in v0.1: losing the key can make the data unrecoverable. Keep another copy of important information.
+Core clipboard, search, copy and storage workflows work offline, without an account, sync, telemetry or automatic update polling. New libraries keep future copies after macOS clipboard approval. Saved pause/disable choices persist. Startup/resume skips existing clipboard content. Hide and pause clears the interface until explicit reopening; it is not an authentication lock.
 
-History is off until you enable it and pauses when locked. Copies from before enabling, resuming, or unlocking are skipped. Source attribution and secret filtering are best effort; do not rely on them to detect every password, private window, or confidential copy.
+Complete saved record payloads are encrypted with AES-256-GCM. The random key is stored separately in your macOS login Keychain. Copied database files alone do not reveal saved text; an unlocked/compromised account, decryptable Keychain, known login credentials or full device compromise is outside this protection. This key profile is not guaranteed device-only. FileVault can help protect a stolen Mac; CopySaver does not change OS settings.
 
-Copying deliberately puts plaintext on the system clipboard. CopySaver marks its writes for this Mac only. Sensitive copies are marked concealed; after 30 seconds CopySaver attempts to clear them if the latest change-count and ownership checks still match. Checking and clearing are separate operations, so an external copy can still race the final clear. Other apps may read copied text; clearing cannot run while this app is suspended or after a crash.
+There is no portable backup or recovery service. Losing the key can make saved data unrecoverable. Keep another copy of important information. Previous protected libraries are separate and are not migrated or deleted by the community app.
 
-The app has no account, sync, telemetry, or automatic update checks. Launcher widgets show generic navigation only. Reset and deletion do not guarantee erasure from backups or snapshots.
+Sensitive conceals previews, body search and accessibility output until explicit reveal/edit, without extra authentication in an open community library. Copying deliberately exposes plaintext on the system clipboard. Sensitive copies are marked concealed and CopySaver attempts to clear its owned copy after 30 seconds. Separate ownership checks/clear retain a race with other apps; clearing cannot run while suspended or after a crash. No secure-erasure or exclusive-access guarantee is made.
+
+Website previews automatically contact the selected non-sensitive HTTPS page and its image host, revealing the requested URL and your IP. Turn this off in Settings > Privacy & Storage. Preview data stays in memory without cookies, credentials or persistent app caches. Normal OS/network services can retain network information. Sensitive snippets are never fetched. No scripts or embedded browser are run.
+
+Launcher widgets contain generic navigation only and receive no saved text or vault key. Source attribution and secret heuristics are best effort. Reset/deletion does not guarantee erasure from backups, snapshots, SSD storage or memory. This ad-hoc app is not notarized by Apple; updates can require renewed OS approval.
+
+PROTECTED COMPATIBILITY PROFILE
+The older protected build is separate: it starts locked, keeps history off until explicitly enabled, and uses device-only data-protection Keychain user-presence authentication, including fresh sensitive-action authentication. Its files and keys are not silently migrated into the community profile described above. The public community beta does not inherit those app-identity or user-presence claims.

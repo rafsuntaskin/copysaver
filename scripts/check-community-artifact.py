@@ -20,11 +20,12 @@ require("NSFaceIDUsageDescription" not in info, "Community app must not advertis
 require(info["CopySaverURLScheme"] == "copysaver-community", "Unexpected community navigation scheme.")
 require(info.get("CFBundleIconFile") == "AppIcon", "Layered C app icon required.")
 require((app / "Contents/Resources/AppIcon.icns").read_bytes()[:4] == b"icns", "Valid bundled icon required.")
+require((app / "Contents/Resources/LICENSE").read_bytes() == (Path(__file__).resolve().parent.parent / "LICENSE").read_bytes(), "App must carry the MIT copyright/license notice.")
 widget = app / "Contents/PlugIns/CopySaverWidget.appex"
 widget_info = plistlib.loads((widget / "Contents/Info.plist").read_bytes())
 require(widget_info["CFBundleIdentifier"] == info["CFBundleIdentifier"] + ".Widget", "Unexpected widget identity.")
 require(widget_info["CopySaverCommunityBuild"] is True, "Community widget routing required.")
-for key in ["CFBundleVersion", "CFBundleShortVersionString"]:
+for key in ["CFBundleVersion", "CFBundleShortVersionString", "CopySaverReleaseChannel", "CopySaverReleaseLabel"]:
     require(info[key] == widget_info[key], "App and widget versions must match.")
 for bundle, executable in [(app, info["CFBundleExecutable"]), (widget, widget_info["CFBundleExecutable"])]:
     require(not (bundle / "Contents/embedded.provisionprofile").exists(), "Provisioning profile must not be embedded.")
@@ -39,5 +40,6 @@ for bundle, executable in [(app, info["CFBundleExecutable"]), (widget, widget_in
     require(plistlib.loads(entitlements) == expected, "Only sandbox and parent-app outgoing preview access are allowed.")
     architectures = subprocess.check_output(["/usr/bin/lipo", "-archs", str(bundle / "Contents/MacOS" / executable)], text=True).split()
     require(set(architectures) == {"arm64", "x86_64"}, "Both Apple silicon and Intel slices required.")
+require(info["CopySaverReleaseChannel"] == "beta", "Community release channel must remain beta until stable acceptance passes.")
 subprocess.run(["codesign", "--verify", "--strict", "--deep", str(app)], check=True)
 print("Community app/widget: ad-hoc, sandboxed, hardened, universal; no Apple authority, provisioning or restricted entitlements.")

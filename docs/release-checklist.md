@@ -1,10 +1,10 @@
 # Release validation
 
-No release is approved yet. Source/build checks do not establish signed platform behavior. Record exact app revision, signing identity, OS/hardware, dates, and outcomes in the spec before checking a gate. Use synthetic data only. Never commit actual vaults, credentials, private clipboard content, or signing material.
+Stable release approval remains pending. The community beta procedure is in [RELEASING.md](RELEASING.md); beta tags do not close the stable acceptance gates. Source/build checks do not establish signed platform behavior. Record exact app revision, signing identity, OS/hardware, dates, and outcomes in the spec before checking a gate. Use synthetic data only. Never commit actual vaults, credentials, private clipboard content, or signing material.
 
 ## Required inputs
 
-Confirm app/repository ownership, production bundle identifiers, Apple Developer team, Developer ID Application identity, private security-report channel, and copyright holder (M4-08). No account, identity, or remote is invented. Confirm the device-bound v0.1/no-portable-backup decision and publish the disclosure in [PRIVACY.txt](PRIVACY.txt).
+Confirm app/repository ownership, production bundle identifiers, private security-report channel and license attribution (M4-08). Apple Developer team/Developer ID inputs apply only to the optional notarized/protected path. No account, identity, or remote is invented. Confirm the Keychain-dependent recovery/no-portable-backup decision and publish the disclosure in [PRIVACY.txt](PRIVACY.txt).
 
 ## Community DMG
 
@@ -46,4 +46,4 @@ DEVELOPMENT_TEAM=YOUR_TEAM SIGNING_IDENTITY='Developer ID Application: Your Name
 
 These are operator templates, not commands that have passed here. The script archives a universal app with embedded widget, verifies both architectures and code signatures, notarizes/staples the app, creates/signs/notarizes/staples a drag-to-Applications DMG, and writes checksums, source revision, toolchain and dependency inventory under ignored `.build/distribution/`. It never creates credentials, pushes, tags, or publishes. The archive command requires a clean reviewed checkout and records its source/toolchain manifest at build time. Keep existing archives for diagnosis rather than overwriting them.
 
-Validate the final DMG on clean supported Macs, including offline launch after stapling. Only then authorize publication/tagging and update the release checklist. CI configuration is committed but its hosted execution is unverified until a repository/remote exists and a run passes.
+Validate the final DMG on clean supported Macs, including offline launch after stapling. Only then authorize publication/tagging and update the release checklist. CI configuration is committed; existing hosted runs have failed at startup before jobs. Hosted execution stays unverified until a run passes.

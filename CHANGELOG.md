@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.5 Beta 1 (8) · community release candidate · November 12, 2026
+
+- Prepare the first versioned community beta for GitHub, preserving the existing library identity and storage format.
+- Add installer/update/troubleshooting guides, safe bug reporting and explicit privacy/recovery disclosures.
+- Add audited distribution manifests, checksums, exact source archives and draft-only release automation.
+- Retain the Layered C icon, automatic capture, local content views and automatic selected-link website previews from the tested previews.
+
+Stable native/security/accessibility/clean-Mac gates remain pending; this is a beta, without Apple Developer ID signing or notarization.
+
 ## 0.1.4 (7) · local development preview · November 12, 2026
 
 - Load real website titles, descriptions and thumbnails automatically for the selected non-sensitive HTTPS link.

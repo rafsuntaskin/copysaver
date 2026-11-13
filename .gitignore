@@ -48,3 +48,7 @@ dist/
 *.swp
 *.swo
 *~
+
+# Local Python validation caches
+__pycache__/
+*.pyc

@@ -2,7 +2,17 @@
 
 A macOS-first, open source clipboard history and named-snippet utility designed to keep stored content encrypted locally.
 
-**Status: native development build with history, snippets, Focus mode, and generic launcher-widget source implemented. The community profile opens and captures automatically using login-Keychain storage, without an Apple-issued signing certificate. Full native/release verification is unfinished; no public release download is published.** Implementation progress and verification gates live in [spec.md](spec.md#0-delivery-checklist-and-progress).
+<img src="designs/icons/layered-c-master.png" width="88" alt="CopySaver Layered C app icon">
+
+**Community beta:** certificate-free macOS app with encrypted local storage. The first shareable beta is being prepared; downloads appear in [GitHub Releases](https://github.com/rafsuntaskin/copysaver/releases) after publication. Stable-release acceptance is unfinished. See [validation status](spec.md#0-delivery-checklist-and-progress).
+
+## Install and use
+
+Download the attached universal `.dmg` from the release, quit an older CopySaver, and drag the app into Applications. This build is ad-hoc signed and **not notarized by Apple**. macOS can require Privacy & Security approval; managed Macs may block it. Follow [installation/update instructions](docs/INSTALL.md) and verify the attached checksums. No Apple account or Terminal security bypass is required.
+
+Targets macOS 14 or later, Apple silicon and Intel. Runtime verification on minimum macOS/Intel, clean-Mac upgrades, VoiceOver and widget discovery remains pending. Windows is not included.
+
+Allow macOS clipboard access, copy new text, then press **Option-Command-V** to search and copy it. Paste with Command-V in the destination app. Change the shortcut or pause capture in Settings. See [troubleshooting](docs/TROUBLESHOOTING.md) if capture or opening fails.
 
 ## v0.1 scope
 
@@ -11,7 +21,7 @@ A macOS-first, open source clipboard history and named-snippet utility designed 
 - Named snippets for addresses, signatures, and other reusable text.
 - Sensitive snippets with hidden previews, explicit reveal, and private clipboard expiry.
 - A full native library and a Spotlight-style Focus panel with a configurable global shortcut.
-- Small and medium macOS Notification Center/desktop launcher widgets.
+- Experimental small/medium launcher-widget source and bundle; gallery discovery in ad-hoc builds is unverified.
 - An encrypted SQLite-backed vault with a random key kept separately in macOS Keychain.
 
 The selected stack is Swift 6, SwiftUI, AppKit, CryptoKit, Security/LocalAuthentication, SQLite, and WidgetKit. macOS is the priority; Windows is a later, separately scoped client.
@@ -38,7 +48,7 @@ make preview
 
 The preview opens the approved three-column library with synthetic samples. Use the sidebar’s Focus mode action to inspect the compact panel. Preview mode never creates a vault, accesses Keychain, or copies to the system clipboard.
 
-The dependency-free Swift package includes AES-GCM encrypted SQLite storage, Keychain adapters, and SwiftUI/AppKit views. Automated tests use synthetic data and injected OS boundaries. `make app` builds an ad-hoc community development app at `.build/CopySaverDev.app`, with a separate identity/vault from the older protected Xcode build. `make preview` still uses fictional in-memory samples without capture or Keychain access. `make community-dmg` builds a universal app and embedded launcher widget from a reviewed clean checkout, with no Apple signing key or notarization. macOS may require first-run/update approval; actual widget discovery and clean-Mac release testing remain pending. See [development setup](docs/development.md), [community release validation](docs/release-checklist.md#community-dmg), [native evidence](docs/native-integration.md), and the [vault format](docs/vault-format.md).
+The dependency-free Swift package includes AES-GCM encrypted SQLite storage, Keychain adapters, and SwiftUI/AppKit views. Automated tests use synthetic data and injected OS boundaries. `make app` builds an ad-hoc community development app at `.build/CopySaverDev.app`, with a separate identity/vault from the older protected Xcode build. `make preview` still uses fictional in-memory samples without capture or Keychain access. `make community-dmg` builds a universal app and embedded launcher widget from a reviewed clean checkout, with no Apple signing key or notarization. macOS may require first-run/update approval; actual widget discovery and clean-Mac release testing remain pending. The versioned beta bundle and draft workflow are documented in [releasing](docs/RELEASING.md). See [development setup](docs/development.md), [community release validation](docs/release-checklist.md#community-dmg), [native evidence](docs/native-integration.md), and the [vault format](docs/vault-format.md).
 
 ## Contributing and security
 

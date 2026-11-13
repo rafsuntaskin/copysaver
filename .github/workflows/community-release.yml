@@ -1,0 +1,74 @@
+name: Community beta release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Reviewed beta tag from release.json
+        required: true
+        type: string
+        default: v0.1.5-beta.1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: community-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate release identity
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 scripts/community-distribution.py config "$RELEASE_TAG"
+      - name: Source, core, widget and distribution regressions
+        run: make verify
+      - name: Universal native app and widget compile
+        run: >-
+          xcodebuild -project CopySaver.xcodeproj -scheme CopySaver
+          -configuration Debug -destination 'generic/platform=macOS'
+          -derivedDataPath .build/xcode-ci ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO build
+
+  package:
+    needs: verify
+    runs-on: macos-15
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate reviewed main and beta identity
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          python3 scripts/community-distribution.py config "$RELEASE_TAG"
+      - name: Build and audit universal certificate-free DMG
+        run: make community-dmg
+      - name: Prepare checksums, source archive and release manifest
+        run: make distribution
+      - name: Preserve the audited release bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: community-beta-assets
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Create reviewable GitHub draft only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/draft-community-release.sh

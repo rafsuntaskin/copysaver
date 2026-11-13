@@ -55,6 +55,8 @@ phases = [objects[p] for p in objects[app_id]["buildPhases"]]
 assert any(objects[objects[f]["fileRef"]].get("path") == "Resources/AppIcon.icns"
            for p in phases if p["isa"] == "PBXResourcesBuildPhase" for f in p["files"])
 
+assert any(objects[objects[f]["fileRef"]].get("path") == "LICENSE"
+           for p in phases if p["isa"] == "PBXResourcesBuildPhase" for f in p["files"]), "The app must bundle its license"
 assert any(p["isa"] == "PBXCopyFilesBuildPhase" and p["dstSubfolderSpec"] == "13" for p in phases)
 probe_id = "E10000000000000000000001"
 probe = objects[probe_id]

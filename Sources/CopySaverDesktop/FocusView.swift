@@ -143,7 +143,8 @@ struct SettingsView: View {
     private var versionLabel: String {
         guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
               let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String else { return "Development preview" }
-        return "Version \(version) (\(build))"
+        let label = Bundle.main.object(forInfoDictionaryKey: "CopySaverReleaseLabel") as? String
+        return "Version \(version) (\(build))" + (label.map { " · \($0)" } ?? "")
     }
 }
 
