@@ -4,7 +4,7 @@ A macOS-first, open source clipboard history and named-snippet utility designed 
 
 <img src="designs/icons/layered-c-master.png" width="88" alt="CopySaver Layered C app icon">
 
-**Community beta:** certificate-free macOS app with encrypted local storage. The first shareable beta is being prepared; downloads appear in [GitHub Releases](https://github.com/rafsuntaskin/copysaver/releases) after publication. Stable-release acceptance is unfinished. See [validation status](spec.md#0-delivery-checklist-and-progress).
+**Community beta:** [Download CopySaver 0.1.5 Beta 1 for macOS](https://github.com/rafsuntaskin/copysaver/releases/download/v0.1.5-beta.1/CopySaver-0.1.5-beta.1-universal.dmg). Certificate-free app with encrypted local storage; see [release notes and checksums](https://github.com/rafsuntaskin/copysaver/releases/tag/v0.1.5-beta.1). Stable-release acceptance is unfinished. See [validation status](spec.md#0-delivery-checklist-and-progress).
 
 ## Install and use
 
