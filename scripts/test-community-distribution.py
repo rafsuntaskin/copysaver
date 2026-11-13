@@ -57,6 +57,12 @@ class DistributionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unexpected release files'):
             distribution.verify(self.assets, self.value)
 
+    def test_standalone_guide_cannot_link_to_an_unattached_file(self):
+        (self.assets / 'INSTALL.md').write_text('[Troubleshooting](missing.md)')
+        distribution.write_manifest(self.assets, self.value, self.revision)
+        with self.assertRaisesRegex(ValueError, 'standalone documentation link'):
+            distribution.verify(self.assets, self.value)
+
     def test_symlink_is_rejected(self):
         path = self.assets / 'INSTALL.md'; path.unlink(); path.symlink_to(self.assets / 'COMMUNITY.txt')
         with self.assertRaisesRegex(ValueError, 'regular files'):

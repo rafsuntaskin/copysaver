@@ -37,4 +37,4 @@ There is no portable backup or recovery. Copying the database alone is not a usa
 
 Quit and remove the Applications app to stop using CopySaver. Removing the app is not a secure erase or guaranteed removal of saved data, backups or snapshots. Reset library is a separate destructive in-app action.
 
-For problems see [troubleshooting](TROUBLESHOOTING.md). Widget discovery, clean-Mac upgrades, minimum-OS/Intel and full accessibility acceptance remain beta test areas.
+For problems see [troubleshooting](https://github.com/rafsuntaskin/copysaver/blob/main/docs/TROUBLESHOOTING.md). Widget discovery, clean-Mac upgrades, minimum-OS/Intel and full accessibility acceptance remain beta test areas.

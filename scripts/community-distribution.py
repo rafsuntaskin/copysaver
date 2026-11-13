@@ -97,6 +97,11 @@ def verify(directory, value):
         if name in manifest['artifacts']:
             info = manifest['artifacts'][name]
             require(info == {'bytes': (directory / name).stat().st_size, 'sha256': checksum}, 'Artifact manifest mismatch: ' + name)
+    for name in ['INSTALL.md', 'RELEASE_NOTES.md']:
+        for target in re.findall(r'!?\[[^\]]*\]\(([^\s)]+)\)', (directory / name).read_text()):
+            if '://' in target or target.startswith(('mailto:', '#')):
+                continue
+            require(target.split('#', 1)[0] in expected_files(value), 'Unresolvable standalone documentation link.')
     prefix = 'CopySaver-' + value['tag'][1:]
     with tarfile.open(directory / names(value)[1], 'r:gz') as archive:
         require(archive.pax_headers.get('comment') == revision, 'Source archive commit identity mismatch.')

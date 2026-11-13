@@ -101,7 +101,7 @@ tasks = re.findall(r"^- \[([ x])\] \*\*([A-Z]+\d?-\d+)\*\*", spec, re.M)
 assert len(tasks) == len({identifier for _, identifier in tasks}), "Duplicate checklist ID"
 links = 0
 for source in root.rglob("*.md"):
-    if any(part.startswith(".") for part in source.relative_to(root).parts):
+    if source.relative_to(root).parts[0] == "dist" or any(part.startswith(".") for part in source.relative_to(root).parts):
         continue
     for target in re.findall(r"!?\[[^\]]*\]\(([^\s)]+)(?:\s+[^)]*)?\)", source.read_text()):
         if "://" in target or target.startswith("mailto:"):
