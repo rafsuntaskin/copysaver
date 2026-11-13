@@ -6,6 +6,21 @@ A macOS-first, open source clipboard history and named-snippet utility designed 
 
 **Community beta:** certificate-free macOS app with encrypted local storage. The first shareable beta is being prepared; downloads appear in [GitHub Releases](https://github.com/rafsuntaskin/copysaver/releases) after publication. Stable-release acceptance is unfinished. See [validation status](spec.md#0-delivery-checklist-and-progress).
 
+## See it in action
+
+[![Watch the CopySaver feature tour: History, Focus mode, snippets and website previews](docs/media/poster.png)](docs/media/copysaver-demo.mp4)
+
+[Watch the 42-second video](docs/media/copysaver-demo.mp4) · [Read the transcript](docs/media/transcript.md) · [Captions](docs/media/copysaver-demo.vtt)
+
+Scripted native views with fictional data. No audio; website metadata is a demo fixture.
+
+<details>
+<summary>Play the animated preview</summary>
+
+![Animated CopySaver tour showing history capture and search, Focus mode, named snippets, concealed sensitive text, website and JSON previews, and privacy settings](docs/media/copysaver-demo.gif)
+
+</details>
+
 ## Install and use
 
 Download the attached universal `.dmg` from the release, quit an older CopySaver, and drag the app into Applications. This build is ad-hoc signed and **not notarized by Apple**. macOS can require Privacy & Security approval; managed Macs may block it. Follow [installation/update instructions](docs/INSTALL.md) and verify the attached checksums. No Apple account or Terminal security bypass is required.
