@@ -28,7 +28,7 @@ Examples of branch names:
 - `test/retention-boundaries`
 - `chore/build-configuration`
 
-Use lowercase, hyphenated topics. Release tags use `v<major>.<minor>.<patch>` after release validation; no release tag is appropriate for the planning baseline.
+Use lowercase, hyphenated topics. Stable tags use `v<major>.<minor>.<patch>` after stable release validation. Explicit community beta tags use `v<major>.<minor>.<patch>-beta.<n>` under [the release procedure](docs/RELEASING.md), retaining all pending native gates and prerelease status. No tag is appropriate for the planning baseline.
 
 The initial repository bootstrap commit on `main` is a one-time exception to branch-based work. The planning baseline is developed on `docs/project-foundation`. No remote, push, pull request, or merge is implied by local commits.
 

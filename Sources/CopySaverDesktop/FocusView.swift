@@ -36,7 +36,7 @@ struct FocusView: View {
                     ScrollView {
                         LazyVStack(spacing: 2) {
                             ForEach(visible) { record in
-                                RecordRow(record: record, selected: record.id == model.selectedID, compact: true) { model.selectRecord(record.id) }.id(record.id)
+                                RecordRow(record: record, preview: model.preview(for: record), selected: record.id == model.selectedID, compact: true) { model.selectRecord(record.id) }.id(record.id)
                             }
                         }.padding(.horizontal, 10).padding(.bottom, 8)
                     }
@@ -143,7 +143,8 @@ struct SettingsView: View {
     private var versionLabel: String {
         guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
               let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String else { return "Development preview" }
-        return "Version \(version) (\(build))"
+        let label = Bundle.main.object(forInfoDictionaryKey: "CopySaverReleaseLabel") as? String
+        return "Version \(version) (\(build))" + (label.map { " · \($0)" } ?? "")
     }
 }
 
@@ -157,6 +158,11 @@ struct LibraryPrivacySection: View {
             if model.automaticallyOpensVault {
                 Text("Sensitive snippets hide their text in previews and search. Choose Show text or Edit snippet when you need the body.").foregroundStyle(.secondary)
             }
+            if model.settings != nil {
+                Toggle("Load website previews automatically", isOn: Binding(get: { model.websitePreviewsEnabled }, set: { model.setWebsitePreviewsEnabled($0) }))
+                    .disabled(model.isBusy || model.isPreview)
+                Text("The selected non-sensitive link contacts its website and image host to load a title, description and image. These sites receive your IP and requested URL. Sensitive snippets are never fetched. Preview data stays in memory.").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
             Text("Portable encrypted backup is not available yet. Keep another copy of important information.").foregroundStyle(.secondary)
         }.fixedSize(horizontal: false, vertical: true)
     }
@@ -164,8 +170,13 @@ struct LibraryPrivacySection: View {
 
 struct AppearanceRoot<Content: View>: View {
     @AppStorage("appearance") private var appearance = "system"
+    @State private var windowIsKey = false
     let content: Content
-    var body: some View { content.preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil) }
+    var body: some View {
+        content.preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+            .environment(\.copySaverWindowIsKey, windowIsKey)
+            .background { WindowKeyObserver(isKey: $windowIsKey).frame(width: 0, height: 0) }
+    }
 }
 
 private struct HistorySettingsView: View {

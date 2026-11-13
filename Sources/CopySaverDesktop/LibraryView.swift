@@ -6,7 +6,9 @@ struct LibraryView: View {
     @Bindable var model: DesktopModel
     /// Nil discovers installed apps; render fixtures inject a synthetic list.
     var applicationSuggestions: [(id: String, name: String)]? = nil
+    @Environment(\.copySaverWindowIsKey) private var windowIsKey
     @FocusState private var searchFocused: Bool
+    @FocusState private var focusLauncherFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
@@ -19,7 +21,8 @@ struct LibraryView: View {
                         Picker("Library", selection: $model.section) {
                             ForEach(LibrarySection.allCases) { Text($0.rawValue).tag($0) }
                         }.labelsHidden().accessibilityLabel("Library section")
-                        Button { model.onOpenFocus?() } label: { Image(systemName: "magnifyingglass") }.help("Open Focus mode")
+                        Button(action: openFocusMode) { Image(systemName: "magnifyingglass") }
+                            .focused($focusLauncherFocused).help("Open Focus mode")
                         Button { model.lock() } label: { Image(systemName: model.lockActionSymbol) }.help(model.lockActionTitle)
                     }.padding(.horizontal, 18).padding(.top, 40).padding(.bottom, 12)
                     Divider()
@@ -34,6 +37,14 @@ struct LibraryView: View {
         .frame(minWidth: 480, minHeight: 540)
         .onChange(of: model.libraryQuery) { _, query in model.ensureSelection(query: query) }
         .onChange(of: model.section) { _, _ in model.ensureSelection(query: model.libraryQuery); model.compactShowDetail = false }
+        .onChange(of: model.isFocusPresented) { _, _ in focusLauncherFocused = false }
+    }
+
+    private func openFocusMode() {
+        // This action transfers focus to another window, rather than selecting a
+        // Library destination. Do not restore the launcher's clicked focus on return.
+        focusLauncherFocused = false
+        model.onOpenFocus?()
     }
 
     private var wideLayout: some View {
@@ -57,8 +68,7 @@ struct LibraryView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
-                Image(systemName: "clipboard").font(.system(size: 18)).frame(width: 32, height: 32)
-                    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
+                AppIconView(size: 36)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("CopySaver").font(.system(size: 16, weight: .semibold))
                     Text("Clipboard & snippets").font(.system(size: 10)).foregroundStyle(.secondary)
@@ -86,9 +96,10 @@ struct LibraryView: View {
                         .accessibilityLabel(model.settings?.manuallyPaused == true ? "Resume capture" : "Pause capture")
                 }
             }.padding(.horizontal, 12).padding(.bottom, 12)
-            Button { model.onOpenFocus?() } label: {
+            Button(action: openFocusMode) {
                 SidebarRowLabel(title: "Focus mode", symbol: "magnifyingglass", shortcut: model.shortcutDescription)
-            }.buttonStyle(SidebarButtonStyle()).help("Open Focus mode: \(model.shortcutDescription)")
+            }.buttonStyle(SidebarButtonStyle()).focused($focusLauncherFocused).focusEffectDisabled()
+                .help("Open Focus mode: \(model.shortcutDescription)")
             Button { model.navigate(to: .settings) } label: {
                 SidebarRowLabel(title: "Settings", symbol: "gearshape")
             }.buttonStyle(SidebarButtonStyle(selected: model.phase == .unlocked && model.section == .settings)).disabled(model.phase != .unlocked)
@@ -130,7 +141,7 @@ struct LibraryView: View {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         ForEach(visible) { record in
-                            RecordRow(record: record, selected: record.id == model.selectedID) { model.selectRecord(record.id) }
+                            RecordRow(record: record, preview: model.preview(for: record), selected: record.id == model.selectedID) { model.selectRecord(record.id) }
                                 .id(record.id)
                                 .contextMenu {
                                     Button("Copy") { if model.selectRecord(record.id) { model.copySelection() } }.disabled(model.isPreview || model.isBusy)
@@ -169,7 +180,7 @@ struct LibraryView: View {
         } else if let record = model.selectedRecord {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 12) {
-                    Text(record.isSensitive ? "HIDDEN PREVIEW" : "PLAIN TEXT")
+                    Text(record.isSensitive ? "HIDDEN PREVIEW" : model.preview(for: record).label.uppercased())
                         .font(.system(size: 10, weight: .semibold)).tracking(0.7).foregroundStyle(.secondary)
                     Spacer()
                     if case .history(let item) = record.payload {
@@ -211,7 +222,11 @@ struct LibraryView: View {
                             .padding(20).background(Color(nsColor: .windowBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 10))
                     }
                 } else {
-                    VaultTextEditor(text: .constant(record.content), editable: false, accessibilityName: "Saved text") { text, _ in
+                    ContentPreviewView(preview: model.preview(for: record), original: record.content, canOpenLink: !model.isPreview && !model.isBusy,
+                                       websiteState: model.websitePreviewState, websitePreviewsEnabled: model.websitePreviewsEnabled,
+                                       automaticPreviewActive: windowIsKey && model.presentationActive && !model.isFocusPresented,
+                                       loadWebsitePreview: { if model.selectedID == record.id { model.loadWebsitePreview() } }, cancelWebsitePreview: { model.cancelWebsitePreview(for: record.id) },
+                                       retryWebsitePreview: { if model.selectedID == record.id { model.loadWebsitePreview(retry: true) } }) { text, _ in
                         model.copySelection(selectedText: text)
                     }.id(record.id)
                 }
@@ -280,19 +295,25 @@ struct LibraryView: View {
 
 struct RecordRow: View {
     let record: VaultRecord
+    var preview: TextContentPreview = .text
     let selected: Bool
     var compact = false
     let select: () -> Void
 
+    private var rowTitle: String {
+        if case .history = record.payload { return preview.rowTitle ?? record.displayTitle }
+        return record.displayTitle
+    }
+
     var body: some View {
         Button(action: select) {
             HStack(alignment: .center, spacing: 11) {
-                Image(systemName: record.symbol).font(.system(size: 15)).frame(width: 32, height: 32).foregroundStyle(.secondary)
+                Image(systemName: record.isSensitive ? "eye.slash" : preview.symbol).font(.system(size: 15)).frame(width: 32, height: 32).foregroundStyle(.secondary)
                     .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(verbatim: record.displayTitle).font(.system(size: 13, weight: .medium)).lineLimit(compact ? 1 : 2).multilineTextAlignment(.leading)
+                    Text(verbatim: rowTitle).font(.system(size: 13, weight: .medium)).lineLimit(compact ? 1 : 2).multilineTextAlignment(.leading)
                     HStack(spacing: 5) {
-                        Text(verbatim: record.subtitle)
+                        Text(verbatim: record.isSensitive ? record.subtitle : preview.rowSummary ?? record.subtitle)
                         if case .history(let item) = record.payload { Text("·"); HistoryAgeLabel(date: item.lastSeenAt) }
                     }.font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }.frame(maxWidth: .infinity, alignment: .leading)

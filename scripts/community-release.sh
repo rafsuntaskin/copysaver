@@ -43,6 +43,10 @@ fi
 printf '%s\n' "$source_revision" > "$output/SOURCE_REVISION.txt"
 /usr/bin/xcodebuild -version > "$output/TOOLCHAIN.txt"
 /usr/bin/xcrun swift --version >> "$output/TOOLCHAIN.txt"
+/usr/bin/xcrun --show-sdk-version >> "$output/TOOLCHAIN.txt"
+python3 --version >> "$output/TOOLCHAIN.txt"
+/usr/bin/sw_vers -productVersion >> "$output/TOOLCHAIN.txt"
+/usr/bin/uname -m >> "$output/TOOLCHAIN.txt"
 printf '%s\n' 'No third-party runtime package dependencies.' > "$output/DEPENDENCIES.txt"
 printf '%s\n' "Mode: $mode" "Uncommitted source: $([[ -n "$dirty" ]] && echo yes || echo no)" \
     'Apple-issued certificate: none' 'Notarization: none' 'Clean-Mac Gatekeeper validation: pending' > "$output/BUILD_INFO.txt"
@@ -50,6 +54,7 @@ staging="$(mktemp -d "$output/dmg-stage.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
 /usr/bin/ditto "$app" "$staging/CopySaver.app"
 ln -s /Applications "$staging/Applications"
+cp LICENSE "$staging/License.txt"
 cp docs/COMMUNITY.txt "$staging/Read me.txt"
 /usr/bin/hdiutil create -volname CopySaver -srcfolder "$staging" -format UDZO -ov "$output/CopySaver-community.dmg"
 (cd "$output" && /usr/bin/shasum -a 256 CopySaver-community.dmg > SHA256SUMS)

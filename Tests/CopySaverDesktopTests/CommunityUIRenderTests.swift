@@ -5,6 +5,23 @@ import CopySaverPlatform
 import SwiftUI
 import Testing
 
+private struct RenderWebsiteLoader: WebsitePreviewLoading {
+    func load(_ url: URL) async throws -> WebsitePreview {
+        let bytes = await MainActor.run {
+            let image = NSImage(size: NSSize(width: 320, height: 180), flipped: false) { rect in
+                NSColor.systemBlue.setFill(); rect.fill()
+                NSColor.white.withAlphaComponent(0.9).setFill()
+                NSBezierPath(roundedRect: NSRect(x: 30, y: 40, width: 110, height: 100), xRadius: 12, yRadius: 12).fill()
+                NSBezierPath(roundedRect: NSRect(x: 164, y: 95, width: 120, height: 16), xRadius: 8, yRadius: 8).fill()
+                NSBezierPath(roundedRect: NSRect(x: 164, y: 64, width: 90, height: 12), xRadius: 6, yRadius: 6).fill()
+                return true
+            }
+            return image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:))?.representation(using: .png, properties: [:])
+        }
+        return WebsitePreview(title: "Synthetic website title", summary: "A useful page description loaded from website metadata.", image: bytes, host: "example.com")
+    }
+}
+
 private actor RenderVault: DesktopVaultAccess {
     var values: [VaultRecord]
     init(_ values: [VaultRecord]) { self.values = values }
@@ -26,10 +43,23 @@ func renderCommunityUIFixtures() async throws {
     let preview = DesktopModel(service: nil, clipboard: nil, preview: true, automaticallyOpensVault: true)
     var records = preview.records
     let long = try VaultRecord(.history(HistoryItem(text: "Synthetic long text\n" + String(repeating: "Exact café 日本語 text with whitespace.  \n", count: 600), firstSeenAt: Date(timeIntervalSince1970: 1_700_000_000), lastSeenAt: Date(timeIntervalSince1970: 1_700_000_000))))
+    var previewExamples: [String: VaultRecord] = [:]
+    let contentExamples = [
+        ("link", "https://example.com/docs/getting-started?source=synthetic"),
+        ("json", #"{"name":"Synthetic example","items":[1,2,3],"enabled":true}"#),
+        ("code", "```swift\nfunc example() -> String {\n    \"café 日本語\"\n}\n```"),
+        ("email", "hello@example.com"),
+        ("phone", "+1 (202) 555-0100"),
+    ]
+    for (name, text) in contentExamples {
+        let record = try VaultRecord(.history(HistoryItem(text: text, firstSeenAt: Date(timeIntervalSince1970: 1_700_000_000), lastSeenAt: Date(timeIntervalSince1970: 1_700_000_000))))
+        records.append(record)
+        previewExamples[name] = record
+    }
     records.append(long)
     records.append(try VaultRecord(.settings(VaultSettings(captureEnabled: true))))
     let vault = RenderVault(records)
-    let model = DesktopModel(service: vault, clipboard: nil, automaticallyOpensVault: true)
+    let model = DesktopModel(service: vault, clipboard: nil, automaticallyOpensVault: true, websitePreviewLoader: RenderWebsiteLoader())
     model.clipboardPermission = .allowed
     model.start(); await model.finishPendingOperations()
     #expect(model.phase == .unlocked)
@@ -38,6 +68,19 @@ func renderCommunityUIFixtures() async throws {
         let name = scheme == .light ? "light" : "dark"
         model.navigate(to: .history); model.ensureSelection(query: "")
         try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 1040, height: 680), to: directory.appendingPathComponent("library-\(name).png"))
+        for (kind, record) in previewExamples.sorted(by: { $0.key < $1.key }) {
+            model.selectRecord(record.id)
+            if kind == "link" { model.loadWebsitePreview(); await model.finishWebsitePreview() }
+            try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 1040, height: 680), to: directory.appendingPathComponent("preview-\(kind)-\(name).png"))
+            if kind == "link" || kind == "json" {
+                if kind == "link" {
+                    await Task.yield()
+                    model.loadWebsitePreview(); await model.finishWebsitePreview()
+                }
+                try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 480, height: 540), to: directory.appendingPathComponent("preview-\(kind)-minimum-\(name).png"))
+            }
+        }
+        model.compactShowDetail = false
         try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 620, height: 680), to: directory.appendingPathComponent("compact-list-\(name).png"))
         model.compactShowDetail = true
         try render(LibraryView(model: model), scheme: scheme, size: NSSize(width: 620, height: 680), to: directory.appendingPathComponent("compact-detail-\(name).png"))
@@ -74,9 +117,38 @@ func renderCommunityUIFixtures() async throws {
     print("Synthetic offscreen UI fixtures rendered under .build/ui-review.")
 }
 
-@MainActor private func render<Content: View>(_ content: Content, scheme: ColorScheme, size: NSSize, to url: URL) throws {
+/// A stale focused launcher in an active background window must look unfocused;
+/// a keyboard-focused control in the key window must retain its outline.
+@MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["COPY_SAVER_RENDER_UI"] == "1"))
+func sidebarFocusOutlineFollowsKeyWindow() throws {
+    let directory = URL(filePath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/ui-review")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    for scheme in [ColorScheme.light, .dark] {
+        let name = scheme == .light ? "light" : "dark"
+        func snapshot(focused: Bool, keyWindow: Bool, selected: Bool = false, suffix: String) throws -> Data {
+            try render(SidebarRowSurface(selected: selected, focused: focused)
+                .environment(\.copySaverWindowIsKey, keyWindow).padding(4).background(Color(nsColor: .windowBackgroundColor)),
+                scheme: scheme, size: NSSize(width: 240, height: 44), to: directory.appendingPathComponent("focus-outline-\(name)-\(suffix).png"))
+        }
+        let normal = try snapshot(focused: false, keyWindow: false, suffix: "normal")
+        let background = try snapshot(focused: true, keyWindow: false, suffix: "background")
+        let keyboard = try snapshot(focused: true, keyWindow: true, suffix: "keyboard")
+        let backgroundMatchesUnfocused = background == normal
+        let keyboardOutlineVisible = keyboard != normal
+        #expect(backgroundMatchesUnfocused)
+        #expect(keyboardOutlineVisible)
+        let selected = try snapshot(focused: false, keyWindow: false, selected: true, suffix: "selected")
+        let selectedBackground = try snapshot(focused: true, keyWindow: false, selected: true, suffix: "selected-background")
+        let backgroundKeepsSelection = selectedBackground == selected
+        let selectionVisible = selected != normal
+        #expect(backgroundKeepsSelection)
+        #expect(selectionVisible)
+    }
+}
+
+@discardableResult @MainActor private func render<Content: View>(_ content: Content, scheme: ColorScheme, size: NSSize, to url: URL) throws -> Data {
     _ = NSApplication.shared
-    let hosting = NSHostingView(rootView: content.environment(\.colorScheme, scheme))
+    let hosting = NSHostingView(rootView: content.environment(\.colorScheme, scheme).environment(\.copySaverWindowIsKey, true))
     let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     window.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
@@ -89,6 +161,94 @@ func renderCommunityUIFixtures() async throws {
     hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
     let data = try #require(bitmap.representation(using: .png, properties: [:]))
     try data.write(to: url, options: .atomic)
+    return data
+}
+
+@MainActor private final class FixtureKeyWindow: NSWindow {
+    var fixtureIsKey = false
+    override var isKeyWindow: Bool { fixtureIsKey }
+}
+
+/// Hidden, synthetic windows exercise notification scoping and view reuse without
+/// activating the test process or opening the user's application.
+@MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["COPY_SAVER_RENDER_UI"] == "1"))
+func windowKeyObserverFollowsOnlyItsHostingWindow() async throws {
+    _ = NSApplication.shared
+    let first = FixtureKeyWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+    let second = FixtureKeyWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+    first.isReleasedWhenClosed = false; second.isReleasedWhenClosed = false
+    let observer = WindowKeyObservationView(frame: .zero)
+    defer { observer.stopObserving(); first.close(); second.close() }
+    var states: [Bool] = []
+    observer.onKeyChange = { states.append($0) }
+    first.contentView = observer
+    await observer.finishPendingUpdate()
+    #expect(states.last == false)
+    first.fixtureIsKey = true
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: first)
+    await observer.finishPendingUpdate()
+    #expect(states.last == true)
+    let count = states.count
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: second)
+    await observer.finishPendingUpdate()
+    #expect(states.count == count)
+    second.fixtureIsKey = true
+    second.contentView = observer
+    await observer.finishPendingUpdate()
+    #expect(states.last == true)
+    let movedCount = states.count
+    first.fixtureIsKey = false
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: first)
+    await observer.finishPendingUpdate()
+    #expect(states.count == movedCount)
+    second.fixtureIsKey = false
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: second)
+    await observer.finishPendingUpdate()
+    #expect(states.last == false)
+    observer.stopObserving()
+    let stoppedCount = states.count
+    second.fixtureIsKey = true
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: second)
+    await observer.finishPendingUpdate()
+    #expect(states.count == stoppedCount)
+
+    // Exercise the actual AppearanceRoot → representable → environment bridge,
+    // including its zero-sized background view, rather than only the adapter.
+    let bridgeWindow = FixtureKeyWindow(contentRect: NSRect(x: 0, y: 0, width: 240, height: 44), styleMask: [.borderless], backing: .buffered, defer: false)
+    bridgeWindow.isReleasedWhenClosed = false
+    bridgeWindow.fixtureIsKey = true
+    let hosting = NSHostingView(rootView: AppearanceRoot(content: SidebarRowSurface(focused: true)
+        .padding(4).background(Color(nsColor: .windowBackgroundColor))))
+    hosting.frame = NSRect(x: 0, y: 0, width: 240, height: 44)
+    bridgeWindow.contentView = hosting
+    defer { bridgeWindow.contentView = nil; bridgeWindow.close() }
+    hosting.layoutSubtreeIfNeeded()
+    func findObserver(_ view: NSView) -> WindowKeyObservationView? {
+        if let observer = view as? WindowKeyObservationView { return observer }
+        for child in view.subviews { if let found = findObserver(child) { return found } }
+        return nil
+    }
+    func pixels() throws -> Data {
+        hosting.layoutSubtreeIfNeeded()
+        let bitmap = try #require(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+        return try #require(bitmap.representation(using: .png, properties: [:]))
+    }
+    let bridge = try #require(findObserver(hosting))
+    await bridge.finishPendingUpdate()
+    let keyPixels = try pixels()
+    bridgeWindow.fixtureIsKey = false
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: bridgeWindow)
+    await bridge.finishPendingUpdate()
+    let backgroundPixels = try pixels()
+    let outlineCleared = keyPixels != backgroundPixels
+    #expect(outlineCleared)
+    bridgeWindow.fixtureIsKey = true
+    NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: bridgeWindow)
+    await bridge.finishPendingUpdate()
+    let restoredPixels = try pixels()
+    let keyboardOutlineRestored = restoredPixels == keyPixels
+    #expect(keyboardOutlineRestored)
 }
 
 private struct SidebarStatesFixture: View {
@@ -100,7 +260,7 @@ private struct SidebarStatesFixture: View {
             row("Pressed", SidebarRowSurface(hovered: true, pressed: true))
             row("Selected", SidebarRowSurface(selected: true))
             row("Selected + hover", SidebarRowSurface(selected: true, hovered: true))
-            row("Keyboard focus", SidebarRowSurface(focused: true))
+            row("Keyboard focus", SidebarRowSurface(focused: true)).environment(\.copySaverWindowIsKey, true)
             row("Increased contrast", SidebarRowSurface(selected: true, increasedContrast: true))
         }.padding(20).background(Color(nsColor: .windowBackgroundColor))
     }
@@ -108,4 +268,26 @@ private struct SidebarStatesFixture: View {
         Label(title, systemImage: "clock").font(.system(size: 13))
             .frame(maxWidth: .infinity, alignment: .leading).padding(10).background(surface)
     }
+}
+
+@MainActor @Test(.enabled(if: ProcessInfo.processInfo.environment["COPY_SAVER_RENDER_UI"] == "1"))
+func websitePreviewLoadsAutomaticallyWhenDetailAppears() async throws {
+    _ = NSApplication.shared
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let record = try VaultRecord(.history(HistoryItem(text: "https://example.com/synthetic", firstSeenAt: date, lastSeenAt: date)))
+    let model = DesktopModel(service: RenderVault([record]), clipboard: nil, automaticallyOpensVault: true, websitePreviewLoader: RenderWebsiteLoader())
+    model.start(); await model.finishPendingOperations(); model.selectRecord(record.id)
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 680), styleMask: [.borderless], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = NSHostingView(rootView: LibraryView(model: model).environment(\.copySaverWindowIsKey, true))
+    defer { window.close(); model.cancelWebsitePreview() }
+    window.contentView?.layoutSubtreeIfNeeded()
+    for _ in 0..<100 {
+        if case .loaded = model.websitePreviewState { break }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    guard case .loaded(let metadata) = model.websitePreviewState else { Issue.record("Appearance did not start automatic loading"); return }
+    #expect(metadata.title == "Synthetic website title")
+    model.lock(); await model.finishPendingOperations()
+    #expect(model.websitePreviewState == .idle)
 }

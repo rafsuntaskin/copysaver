@@ -50,6 +50,7 @@ staging="$(mktemp -d "$output/dmg-stage.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
 /usr/bin/ditto "$app" "$staging/CopySaver.app"
 ln -s /Applications "$staging/Applications"
+cp LICENSE "$staging/License.txt"
 cp docs/PRIVACY.txt "$staging/Read me.txt"
 /usr/bin/hdiutil create -volname CopySaver -srcfolder "$staging" -format UDZO -ov "$output/CopySaver.dmg"
 /usr/bin/codesign --sign "$SIGNING_IDENTITY" --timestamp "$output/CopySaver.dmg"

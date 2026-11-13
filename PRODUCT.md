@@ -12,7 +12,7 @@ People working across macOS apps throughout the day who need to recover recently
 
 ## Product Purpose
 
-Make local text retrieval quick and understandable while encrypting stored content. No account, server, telemetry, or network dependency. Community builds automatically open their login-Keychain-backed vault and capture new copies after OS approval. Pause/Disable choices persist; sleep purges state and wake resumes. Sensitive conceals previews and search results without requiring authentication inside an open community library. Earlier protected builds remain separate. Windows is a later effort.
+Make local text retrieval quick and understandable while encrypting stored content. No account, server or telemetry. Core text workflows work offline; automatic selected-link previews contact websites and image hosts, with an encrypted disable preference. Community builds automatically open their login-Keychain-backed vault and capture new copies after OS approval. Pause/Disable choices persist; sleep purges state and wake resumes. Sensitive conceals previews and search results without requiring authentication inside an open community library. Earlier protected builds remain separate. Windows is a later effort.
 
 ## Brand Personality
 

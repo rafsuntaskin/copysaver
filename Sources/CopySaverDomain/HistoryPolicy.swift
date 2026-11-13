@@ -71,9 +71,9 @@ public enum HistoryPolicy {
 }
 
 public extension VaultSettings {
-    func updating(captureEnabled: Bool? = nil, manuallyPaused: Bool? = nil, historyCountLimit: Int? = nil, retentionDays: Int? = nil, excludedBundleIDs: Set<String>? = nil, idleLockTimeout: IdleLockTimeout? = nil) throws -> VaultSettings {
+    func updating(captureEnabled: Bool? = nil, manuallyPaused: Bool? = nil, historyCountLimit: Int? = nil, retentionDays: Int? = nil, excludedBundleIDs: Set<String>? = nil, idleLockTimeout: IdleLockTimeout? = nil, websitePreviewsEnabled: Bool? = nil) throws -> VaultSettings {
         try VaultSettings(id: id, captureEnabled: captureEnabled ?? self.captureEnabled, manuallyPaused: manuallyPaused ?? self.manuallyPaused,
                           historyCountLimit: historyCountLimit ?? self.historyCountLimit, retentionDays: retentionDays ?? self.retentionDays,
-                          excludedBundleIDs: excludedBundleIDs ?? self.excludedBundleIDs, idleLockTimeout: idleLockTimeout ?? self.idleLockTimeout)
+                          excludedBundleIDs: excludedBundleIDs ?? self.excludedBundleIDs, idleLockTimeout: idleLockTimeout ?? self.idleLockTimeout, websitePreviewsEnabled: websitePreviewsEnabled ?? self.websitePreviewsEnabled)
     }
 }

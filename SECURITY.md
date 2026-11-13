@@ -1,11 +1,15 @@
 # Security policy
 
-CopySaver is in development. There are no supported releases or completed security guarantees yet. [spec.md](spec.md#7-security-model) defines the intended threat model; its acceptance checks track what has actually been verified.
+CopySaver's community beta is early-access software. No stable release or independent security review is claimed. The [threat model and acceptance checks](spec.md#7-security-model) distinguish implemented controls from remaining native verification. Keep another copy of important information; there is no portable backup/recovery service.
 
-## Reporting
+## Private reporting
 
-A private reporting channel is not configured yet. Before public distribution, maintainers must enable private vulnerability reporting on the hosting service or publish a dedicated security address. This is a tracked release gate in the spec.
+Public distribution requires maintainers to enable and verify GitHub private vulnerability reporting. When available, use [Report a vulnerability](https://github.com/rafsuntaskin/copysaver/security/advisories/new) under Security → Advisories. This sends the report privately to repository maintainers. If that option is unavailable, request private reporting instructions from the maintainer; do not put exploit details into a public issue. No dedicated security email is invented.
 
-Until that channel is available, request private reporting instructions from the maintainer without including exploit details in a public issue. Do not publish user clipboard content, vault files, keys, account details, or authentication recordings. Use a minimal reproduction with synthetic data and include the affected source revision and relevant OS/toolchain versions.
+Never attach actual clipboard content, saved libraries, Keychain files, keys, account details or authentication recordings. Use a minimal reproduction with synthetic data and include the app version/build, source revision, macOS/chip and community/protected profile. Do not test against another person's vault or production credentials.
 
-Do not test against another person's vault or production credentials. No response-time or vulnerability-reward commitment is established at this stage.
+## Scope and response
+
+Reports on the latest community beta will be triaged on a best-effort basis. Earlier development previews and the protected compatibility profile are not separately maintained public release lines. There is no guaranteed response time, vulnerability reward or recovery service. Missing-key failures must preserve the existing library, not regenerate a key or encourage a reset.
+
+The login Keychain and open user session are part of the community trust boundary. A compromised/unlocked account is outside its at-rest guarantee. Website previews contact external sites for the selected nonsensitive link and can be disabled in Privacy & Storage; they are not telemetry. Do not claim exclusive app access, secure deletion or forensic memory erasure.

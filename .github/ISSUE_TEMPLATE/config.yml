@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Installation and troubleshooting
+    url: https://github.com/rafsuntaskin/copysaver/blob/main/docs/INSTALL.md
+    about: Read the community install, update and troubleshooting guide.
+  - name: Private security reports
+    url: https://github.com/rafsuntaskin/copysaver/blob/main/SECURITY.md
+    about: Do not post private clipboard or vulnerability details publicly.

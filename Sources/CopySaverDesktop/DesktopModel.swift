@@ -13,6 +13,10 @@ public enum LibrarySection: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum DesktopPhase: Equatable, Sendable { case loading, needsSetup, locked, unlocking, locking, unlocked, failed }
+enum WebsitePreviewState: Equatable {
+    case idle, loading, loaded(WebsitePreview), unavailable
+}
+
 public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInactive, displaySleep }
 
 @MainActor @Observable public final class DesktopModel {
@@ -21,6 +25,8 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         didSet {
             sortedItems.removeAll()
             queryResults.removeAll()
+            contentPreviews.removeAll()
+            invalidateWebsitePreviewIfNeeded()
         }
     }
     public private(set) var isBusy = false
@@ -31,10 +37,10 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     public var requiresSensitiveAuthentication: Bool { !automaticallyOpensVault }
     public var lockActionTitle: String { automaticallyOpensVault ? "Hide and pause" : "Lock vault" }
     public var lockActionSymbol: String { automaticallyOpensVault ? "eye.slash" : "lock" }
-    public var section: LibrarySection = .history
+    public var section: LibrarySection = .history { didSet { if section != oldValue { cancelWebsitePreview() } } }
     public var libraryQuery = ""
     public var focusQuery = ""
-    public var selectedID: UUID? { didSet { if selectedID != oldValue { concealSensitiveContent() } } }
+    public var selectedID: UUID? { didSet { if selectedID != oldValue { concealSensitiveContent(); cancelWebsitePreview() } } }
     public var isCreatingSnippet = false
     public var draftName = ""
     public var draftBody = ""
@@ -81,6 +87,98 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     @ObservationIgnored private var sortedItems: [LibrarySection: [VaultRecord]] = [:]
     @ObservationIgnored private var queryResults: [LibrarySection: (query: String, records: [VaultRecord])] = [:]
 
+    private(set) var websitePreviewState: WebsitePreviewState = .idle
+    @ObservationIgnored private let websitePreviewLoader: any WebsitePreviewLoading
+    @ObservationIgnored private var websiteOperation: Task<Void, Never>?
+    @ObservationIgnored private var websiteTimeout: Task<Void, Never>?
+    @ObservationIgnored private var websiteRequest: (id: UUID, body: String)?
+    @ObservationIgnored private var websiteGeneration = UUID()
+
+    @ObservationIgnored private var contentPreviews: [UUID: TextContentPreview] = [:]
+
+    func preview(for record: VaultRecord) -> TextContentPreview {
+        // Observe records even on cache hits; use the current record, never a stale
+        // view snapshot after an edit/delete. Sensitive bodies are not analyzed.
+        guard phase == .unlocked, let current = records.first(where: { $0.id == record.id }),
+              !current.isSensitive else { return .text }
+        if let cached = contentPreviews[current.id] { return cached }
+        let preview = TextContentPreview.classify(current.content)
+        if contentPreviews.count >= 128 { contentPreviews.removeAll() }
+        contentPreviews[current.id] = preview
+        return preview
+    }
+
+    private var websitePreviewsDisabledForSession = false
+    var websitePreviewsEnabled: Bool { !websitePreviewsDisabledForSession && (settings?.websitePreviewsEnabled ?? false) }
+
+    func setWebsitePreviewsEnabled(_ enabled: Bool) {
+        websitePreviewsDisabledForSession = !enabled
+        if !enabled { cancelWebsitePreview() }
+        guard let settings, let next = try? settings.updating(websitePreviewsEnabled: enabled) else { return }
+        saveSettings(next)
+    }
+
+    @discardableResult func loadWebsitePreview(retry: Bool = false) -> Task<Void, Never>? {
+        guard phase == .unlocked, !isPreview, !isBusy, !isFocusPresented, presentationActive,
+              websitePreviewsEnabled, let record = selectedRecord, !record.isSensitive,
+              case .webLink(let link) = preview(for: record), HTTPWebsitePreviewLoader.supports(link.url),
+              websitePreviewState == .idle || retry && websitePreviewState == .unavailable else { return nil }
+        cancelWebsitePreview()
+        let request = UUID()
+        websiteGeneration = request
+        websiteRequest = (record.id, record.content)
+        websitePreviewState = .loading
+        let vaultGeneration = generation
+        websiteOperation = Task { [weak self, websitePreviewLoader] in
+            do {
+                let result = try await websitePreviewLoader.load(link.url)
+                guard !Task.isCancelled, let self, self.generation == vaultGeneration,
+                      self.websiteGeneration == request, self.phase == .unlocked,
+                      self.presentationActive, self.websitePreviewsEnabled,
+                      self.selectedID == record.id,
+                      let current = self.records.first(where: { $0.id == record.id }), !current.isSensitive,
+                      current.content.utf8.elementsEqual(record.content.utf8) else { return }
+                self.websiteTimeout?.cancel()
+                self.websitePreviewState = .loaded(result)
+            } catch {
+                guard !Task.isCancelled, let self, self.websiteGeneration == request else { return }
+                self.websiteTimeout?.cancel()
+                self.websitePreviewState = .unavailable
+            }
+        }
+        websiteTimeout = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(20)) } catch { return }
+            guard let self, self.websiteGeneration == request else { return }
+            self.cancelWebsitePreview()
+            self.websitePreviewState = .unavailable
+        }
+        return websiteOperation
+    }
+
+    func cancelWebsitePreview(for recordID: UUID) {
+        guard websiteRequest?.id == recordID else { return }
+        cancelWebsitePreview()
+    }
+
+    func cancelWebsitePreview() {
+        websiteGeneration = UUID()
+        websiteTimeout?.cancel(); websiteTimeout = nil
+        websiteOperation?.cancel(); websiteOperation = nil
+        websiteRequest = nil
+        websitePreviewState = .idle
+    }
+
+    private func invalidateWebsitePreviewIfNeeded() {
+        guard let request = websiteRequest else { return }
+        guard let current = records.first(where: { $0.id == request.id }), !current.isSensitive,
+              current.content.utf8.elementsEqual(request.body.utf8),
+              (try? HistoryPolicy.settings(in: records).websitePreviewsEnabled) == true else {
+            cancelWebsitePreview(); return
+        }
+    }
+
+    func finishWebsitePreview() async { await websiteOperation?.value }
+
     func finishPendingOperations() async {
         await operation?.value
         await lockingOperation?.value
@@ -88,7 +186,8 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
         await operation?.value
     }
 
-    public init(service: (any DesktopVaultAccess)?, clipboard: (any ClipboardOutput)?, preview: Bool = false, automaticallyOpensVault: Bool = false) {
+    public init(service: (any DesktopVaultAccess)?, clipboard: (any ClipboardOutput)?, preview: Bool = false, automaticallyOpensVault: Bool = false, websitePreviewLoader: any WebsitePreviewLoading = HTTPWebsitePreviewLoader()) {
+        self.websitePreviewLoader = websitePreviewLoader
         self.service = preview ? nil : service
         self.clipboard = preview ? nil : clipboard
         self.isPreview = preview
@@ -342,6 +441,7 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
     }
 
     private func closeVault() {
+        cancelWebsitePreview()
         onWillLock?()
         onCaptureBoundary?()
         generation = UUID()
@@ -505,7 +605,7 @@ public enum VaultSuspensionReason: Hashable, Sendable { case sleep, sessionInact
 
     public func setPresentationActive(_ active: Bool) {
         presentationActive = active
-        if !active { concealSensitiveContent() }
+        if !active { concealSensitiveContent(); cancelWebsitePreview() }
     }
 
     public func resetPreview() {

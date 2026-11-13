@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible problem with the community beta.
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Use synthetic text only. Never attach a saved library, Keychain file,
+        credentials, real clipboard content or an unredacted screenshot.
+        Follow SECURITY.md for vulnerabilities instead of posting them here.
+  - type: input
+    id: version
+    attributes:
+      label: CopySaver version and build
+      description: Copy from Settings → About CopySaver.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS version and chip
+      placeholder: macOS version, Apple silicon or Intel
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installation method
+      options:
+        - GitHub community DMG
+        - Built from source
+        - Protected compatibility build
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce with synthetic text
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true

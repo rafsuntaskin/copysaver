@@ -41,4 +41,8 @@ does not guarantee erasure from backups, snapshots, SSD storage or memory.
 
 The bundled widget contains generic navigation only. Discovery and placement in
 ad-hoc builds remain unverified; it never receives saved text or the vault key.
-This is a development preview until the remaining release acceptance checks pass.
+This is a community beta. Stable release acceptance, clean-Mac/minimum-OS/Intel,
+VoiceOver and widget-discovery checks remain pending. See the attached release notes.
+
+WEBSITE PREVIEWS
+Selected non-sensitive HTTPS links automatically contact their website and image host to load a title, description and thumbnail. Those sites receive your IP and requested URL. Turn this off in Settings > Privacy & Storage. Sensitive snippets are never fetched. CopySaver keeps preview data in memory without cookies or a disk cache; normal OS/network services may retain network information. Core clipboard and storage workflows still work offline.

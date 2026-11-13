@@ -8,7 +8,7 @@ struct SidebarButtonStyle: ButtonStyle {
     var verticalPadding: CGFloat = 10
     @Environment(\.isEnabled) private var enabled
     @Environment(\.isFocused) private var focused
-    @Environment(\.controlActiveState) private var activeState
+    @Environment(\.copySaverWindowIsKey) private var windowIsKey
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var hovered = false
@@ -20,15 +20,15 @@ struct SidebarButtonStyle: ButtonStyle {
             .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
             .foregroundStyle(Color.primary.opacity(enabled ? 1 : 0.4))
             .background {
-                SidebarRowSurface(selected: selected, hovered: hovered && enabled && activeState != .inactive,
-                                  pressed: configuration.isPressed && enabled && activeState != .inactive,
-                                  focused: focused && enabled && activeState != .inactive, increasedContrast: contrast == .increased)
+                SidebarRowSurface(selected: selected, hovered: hovered && enabled && windowIsKey,
+                                  pressed: configuration.isPressed && enabled && windowIsKey,
+                                  focused: focused && enabled, increasedContrast: contrast == .increased)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: hovered)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.08), value: configuration.isPressed)
             }
             .contentShape(RoundedRectangle(cornerRadius: 8))
             .onHover { hovered = $0 }
-            .onChange(of: activeState) { _, state in if state == .inactive { hovered = false } }
+            .onChange(of: windowIsKey) { _, isKey in if !isKey { hovered = false } }
             .focusEffectDisabled()
     }
 }
@@ -39,14 +39,16 @@ struct SidebarRowSurface: View {
     var pressed = false
     var focused = false
     var increasedContrast = false
+    @Environment(\.copySaverWindowIsKey) private var windowIsKey
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 8)
+        let keyboardFocused = focused && windowIsKey
         ZStack {
             shape.fill(selected ? Color.accentColor.opacity(increasedContrast ? 0.22 : 0.13) : .clear)
             shape.fill(Color.primary.opacity(pressed ? 0.09 : hovered ? 0.045 : 0))
-            shape.strokeBorder(focused ? Color.accentColor : increasedContrast && selected ? Color.accentColor.opacity(0.6) : .clear,
-                               lineWidth: focused ? 2 : 1)
+            shape.strokeBorder(keyboardFocused ? Color.accentColor : increasedContrast && selected ? Color.accentColor.opacity(0.6) : .clear,
+                               lineWidth: keyboardFocused ? 2 : 1)
         }
     }
 }

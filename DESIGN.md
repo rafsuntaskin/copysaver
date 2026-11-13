@@ -32,14 +32,23 @@ Use the shared search field at a larger type size, compact single-line result ti
 - Empty states offer a useful action and do not seed a real vault with examples.
 - A deliberate developer UI-preview mode may show synthetic records, with an unmistakable sample-data label and no clipboard/Keychain/vault access. It must never unlock a real vault or be a fallback for failed authentication.
 - Sensitive bodies remain masked in previews and accessibility output. Community reveal/edit/copy requires no additional authentication; the protected profile retains its original authentication. Explicit reveal expires on deactivation or after 30 seconds.
+- Focus mode is a launcher, not a Library destination. Clear its stored focus when opening/closing the panel, and draw keyboard outlines only in the actual hosting key window. Use an AppKit window-scoped key notification adapter rather than inferring key status from active appearance.
 - Sidebar rows own their entire hit area. Only the active destination uses an accent selection fill; hover and press use quiet neutral fills. Keep text/icon positions stable, use a distinct keyboard focus outline, and fade state changes without scaling or sliding. Respect Reduce Motion and increased contrast.
 - Show copy/save success only after the real operation succeeds. Controls for unavailable functionality must not pretend to work.
 - Preserve dirty-draft warnings for normal navigation; lock clears drafts without waiting for confirmation.
 
 ## Craft and verification
 
-Use live SwiftUI text, controls, lists, and SF Symbols for the approved visual ingredients; the mock PNGs are references only. No additional raster assets are needed for this utility. Use short state transitions, respect reduced motion, and inspect the running native app at normal and compact sizes in light/dark appearance. Record pending checks rather than treating compilation or a generated screenshot as UX, accessibility, or security validation.
+Use live SwiftUI text, controls, lists, and SF Symbols for the approved visual ingredients; the mock PNGs are references only. The user-approved Layered C app icon is the only custom raster brand asset; content previews use native text/SF Symbols and, for nonsensitive website links, a fetched thumbnail kept only in memory. Use short state transitions, respect reduced motion, and inspect the running native app at normal and compact sizes in light/dark appearance. Record pending checks rather than treating compilation or a generated screenshot as UX, accessibility, or security validation.
 
 ## Launcher widget
 
 The approved generic launcher requirement is carried into native WidgetKit: small uses name/icon, a quiet Clipboard & snippets label, and Open Focus Mode; medium adds separate History/Snippets links. Use system widget margins, semantic foregrounds and SF Symbols. This is the same restrained utility direction, with no content thumbnails, status metrics, new imagery, or alternate visual theme. Actual system gallery rendering remains a native validation gate.
+
+## App icon
+
+Use the approved Layered C: graphite tile, cobalt outer C and silver inner C, subtly offset like saved copies. Source and native packaging notes are in designs/icons/README.md. The icon is bundled for Finder/Dock and used in the Library header; navigation and menu bar retain semantic template symbols.
+
+## Content previews
+
+Content type is a quiet aid to retrieval. Share type symbols and compact summaries in Library and Focus, retain snippet names, and keep full details in Library. A link uses one restrained preview surface with a bounded thumbnail, page title/description, actual host and explicit browser action; original saved text stays below. Load automatically only for the selected non-sensitive link in the active Library, with quiet loading and retry states and an encrypted off toggle. Contact previews use the same spacing. JSON and code offer a compact preview/original switch; no rich-text clipboard payload, decorative animation or embedded web view. Sensitive bodies never enter classification, even when explicitly revealed. All text copies route through the existing policy editor/output path.
